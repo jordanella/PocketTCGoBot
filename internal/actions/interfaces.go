@@ -28,6 +28,7 @@ type BotInterface interface {
 	CV() *cv.Service
 	ErrorMonitor() *monitor.ErrorMonitor
 	Config() ConfigInterface
+	Templates() TemplateRegistryInterface
 
 	// Context management
 	Context() context.Context
@@ -37,4 +38,12 @@ type BotInterface interface {
 	IsStopped() bool
 
 	// Add other methods that actions need to call on the bot
+}
+
+// TemplateRegistryInterface defines the interface for template lookup
+// This allows actions to reference templates by name from YAML scripts
+type TemplateRegistryInterface interface {
+	Get(name string) (cv.Template, bool)
+	MustGet(name string) cv.Template
+	Has(name string) bool
 }

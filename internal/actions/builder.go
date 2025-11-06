@@ -2,30 +2,44 @@ package actions
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"jordanella.com/pocket-tcg-go/internal/cv"
 	"jordanella.com/pocket-tcg-go/internal/monitor"
 )
 
 // ActionBuilder type and core methods
 type ActionBuilder struct {
-	bot                BotInterface // Reference to bot
 	steps              []Step
 	timeout            time.Duration
 	retries            int
 	ignoreErrors       bool
-	ctx                context.Context
-	errorCheckEnabled  bool                         // Whether to check for errors during execution
-	errorCheckInterval time.Duration                // How often to check for errors
-	errorHandler       monitor.ErrorHandlerFunc     // Custom error handler for this action
+	errorCheckEnabled  bool                      // Whether to check for errors during execution
+	errorCheckInterval time.Duration             // How often to check for errors
+	errorHandler       monitor.ErrorHandlerFunc  // Custom error handler for this action
+	templateRegistry   TemplateRegistryInterface // Optional: for validating template names at build time
+}
+
+// NewActionBuilder creates a new ActionBuilder for building reusable routines
+// The bot is not required at build time - it will be provided during Execute()
+func NewActionBuilder() *ActionBuilder {
+	return &ActionBuilder{}
+}
+
+// WithTemplateRegistry sets the template registry for build-time validation
+// This allows actions to validate that template names exist during the build phase
+func (ab *ActionBuilder) WithTemplateRegistry(registry TemplateRegistryInterface) *ActionBuilder {
+	ab.templateRegistry = registry
+	return ab
 }
 
 type Step struct {
 	name         string
-	execute      func() error
+	execute      func(BotInterface) error // Bot is provided at execution time
 	recover      func(error) error
-	timeout      time.Duration
 	canInterrupt bool
+	issue        error
 }
 
 // Builder configuration methods
@@ -109,8 +123,10 @@ var defaultErrorHandler = func(event *monitor.ErrorEvent) monitor.ErrorResponse 
 
 // Execution
 
-func (ab *ActionBuilder) Execute() error {
-	ctx := ab.bot.Context()
+// Execute runs the action sequence on the provided bot
+// This allows the same ActionBuilder to be executed on multiple bots
+func (ab *ActionBuilder) Execute(bot BotInterface) error {
+	ctx := bot.Context()
 	if ab.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, ab.timeout)
@@ -118,22 +134,23 @@ func (ab *ActionBuilder) Execute() error {
 	}
 
 	// If error checking is enabled, execute with monitoring
-	if ab.errorCheckEnabled && ab.bot.ErrorMonitor() != nil {
-		return ab.executeWithErrorMonitoring(ctx)
+	if ab.errorCheckEnabled && bot.ErrorMonitor() != nil {
+		return ab.executeWithErrorMonitoring(ctx, bot)
 	}
 
 	// Otherwise execute normally
-	return ab.executeSteps(ctx)
+	return ab.executeSteps(ctx, bot)
 }
 
-func (ab *ActionBuilder) ExecuteOnce() error {
+// ExecuteOnce runs the action sequence once with a background context
+func (ab *ActionBuilder) ExecuteOnce(bot BotInterface) error {
 	ctx := context.Background()
-	return ab.executeSteps(ctx)
+	return ab.executeSteps(ctx, bot)
 }
 
 // Internal
 
-func (ab *ActionBuilder) executeSteps(ctx context.Context) error {
+func (ab *ActionBuilder) executeSteps(ctx context.Context, bot BotInterface) error {
 	for _, step := range ab.steps {
 		select {
 		case <-ctx.Done():
@@ -141,7 +158,11 @@ func (ab *ActionBuilder) executeSteps(ctx context.Context) error {
 		default:
 		}
 
-		if err := step.execute(); err != nil {
+		if step.issue != nil {
+			return fmt.Errorf("build configuration error for step '%s': %w", step.name, step.issue)
+		}
+
+		if err := step.execute(bot); err != nil {
 			if !ab.ignoreErrors {
 				return err
 			}
@@ -151,15 +172,15 @@ func (ab *ActionBuilder) executeSteps(ctx context.Context) error {
 }
 
 // executeWithErrorMonitoring executes steps while checking for errors
-func (ab *ActionBuilder) executeWithErrorMonitoring(ctx context.Context) error {
-	errorChan := ab.bot.ErrorMonitor().GetErrorChannel()
+func (ab *ActionBuilder) executeWithErrorMonitoring(ctx context.Context, bot BotInterface) error {
+	errorChan := bot.ErrorMonitor().GetErrorChannel()
 	ticker := time.NewTicker(ab.errorCheckInterval)
 	defer ticker.Stop()
 
 	// Execute steps in goroutine
 	done := make(chan error, 1)
 	go func() {
-		done <- ab.executeSteps(ctx)
+		done <- ab.executeSteps(ctx, bot)
 	}()
 
 	// Monitor for errors while executing
@@ -191,10 +212,12 @@ func (ab *ActionBuilder) executeWithErrorMonitoring(ctx context.Context) error {
 	}
 }
 
+/* UNUSED
 func (ab *ActionBuilder) shouldRetry(err error) bool {
 	err = ab.steps[len(ab.steps)-1].recover(err)
 	return err != nil
 }
+*/
 
 // ErrorInterrupt is a special error type that indicates an error was handled
 // but requires interrupting the current routine
@@ -205,4 +228,48 @@ type ErrorInterrupt struct {
 
 func (e *ErrorInterrupt) Error() string {
 	return e.Message
+}
+
+func (ab *ActionBuilder) buildSteps(actions []ActionStep) []Step {
+	// Create a temporary ActionBuilder to house the new steps.
+	// This is clean because the ActionStep.Build method appends to its receiver's steps field.
+	tempBuilder := NewActionBuilder()
+
+	// Propagate template registry for nested validation
+	tempBuilder.templateRegistry = ab.templateRegistry
+
+	for _, action := range actions {
+		action.Build(tempBuilder)
+	}
+
+	// The steps are now in the temporary builder
+	return tempBuilder.steps
+}
+
+func buildTemplateConfiguration(bot BotInterface, templateName string, actionThreshold *float64, actionRegion *cv.Region) (template cv.Template, config *cv.MatchConfig, err error) {
+	template, ok := bot.Templates().Get(templateName)
+	if !ok {
+		return cv.Template{}, nil, fmt.Errorf("template '%s' not found in registry", templateName)
+	}
+
+	// Build match config starting with template's threshold
+	threshold := template.Threshold
+	if actionThreshold != nil {
+		// Override with action-level threshold if provided
+		threshold = *actionThreshold
+	}
+
+	config = &cv.MatchConfig{
+		Threshold: threshold,
+	}
+
+	// Apply region (action-level takes precedence over template-level)
+	if actionRegion != nil {
+		// Action-level region override
+		config.SearchRegion = actionRegion.ToImageRectangle()
+	} else if template.Region != nil {
+		// Fall back to template-level region
+		config.SearchRegion = template.Region.ToImageRectangle()
+	}
+	return template, config, nil
 }

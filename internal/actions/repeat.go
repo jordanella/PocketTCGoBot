@@ -1,0 +1,55 @@
+package actions
+
+import (
+	"fmt"
+)
+
+type Repeat struct {
+	Iterations int          `yaml:"iterations"`
+	Actions    []ActionStep `yaml:"actions"`
+}
+
+func (a *Repeat) Validate(ab *ActionBuilder) error {
+	if a.Iterations <= 0 {
+		return fmt.Errorf("iterations must be greater than 0")
+	}
+
+	if len(a.Actions) == 0 {
+		return fmt.Errorf("actions cannot be empty")
+	}
+
+	// Validate nested actions with better error context
+	for i, action := range a.Actions {
+		if err := action.Validate(ab); err != nil {
+			return fmt.Errorf("Repeat (%d) -> nested action %d: %w", a.Iterations, i+1, err)
+		}
+	}
+
+	return nil
+}
+
+func (a *Repeat) Build(ab *ActionBuilder) *ActionBuilder {
+	step := Step{
+		name: fmt.Sprintf("Repeat (%d)", a.Iterations),
+		execute: func(bot BotInterface) error {
+			// Build the nested actions into a concrete slice of executable steps
+			nestedSteps := ab.buildSteps(a.Actions)
+
+			for i := 0; i < a.Iterations; i++ {
+				// Re-execute the action builder's steps
+				subBuilder := &ActionBuilder{
+					steps: nestedSteps,
+				}
+
+				// Call the internal execution function with the bot
+				if err := subBuilder.executeSteps(bot.Context(), bot); err != nil {
+					return fmt.Errorf("repeat iteration %d failed: %w", i+1, err)
+				}
+			}
+			return nil
+		},
+		issue: a.Validate(ab),
+	}
+	ab.steps = append(ab.steps, step)
+	return ab
+}

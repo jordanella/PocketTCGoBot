@@ -1,5 +1,7 @@
 package cv
 
+import "image"
+
 // Image region types
 type Region struct {
 	X1, Y1, X2, Y2 int
@@ -29,4 +31,12 @@ func (r Region) Width() int {
 // Height returns the height of the region
 func (r Region) Height() int {
 	return r.Y2 - r.Y1
+}
+
+// ToImageRectangle converts Region to *image.Rectangle for use with CV operations
+func (r Region) ToImageRectangle() *image.Rectangle {
+	return &image.Rectangle{
+		Min: image.Point{X: r.X1, Y: r.Y1},
+		Max: image.Point{X: r.X2, Y: r.Y2},
+	}
 }

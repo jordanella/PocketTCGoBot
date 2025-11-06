@@ -1,0 +1,206 @@
+# UI Templates Configuration
+# This file defines all UI element templates used for computer vision matching
+#
+# Template Structure:
+#   name: Unique identifier for the template
+#   path: Path to the template image file (relative to templates directory)
+#   threshold: Match confidence threshold (0.0-1.0, default: 0.8)
+#   region: Optional region to search within (x1, y1, x2, y2)
+#   scale: Optional scale factor for the template
+#   preload: Load image at startup (default: false) - use for frequently accessed templates
+#   unload_after: Unload image after use (default: false) - use for rarely accessed templates
+
+templates:
+  # Main Navigation (frequently used - preload)
+  - name: Main
+    path: ui/Main.png
+    threshold: 0.8
+    preload: true  # Load at startup for better performance
+    region:
+      x1: 120
+      y1: 316
+      x2: 143
+      y2: 335
+
+  - name: Menu
+    path: ui/Menu.png
+    threshold: 0.8
+    preload: true  # Frequently used
+    region:
+      x1: 20
+      y1: 120
+      x2: 50
+      y2: 150
+
+  - name: Home
+    path: ui/Home.png
+    threshold: 0.8
+    region:
+      x1: 20
+      y1: 500
+      x2: 55
+      y2: 530
+
+  - name: Social
+    path: ui/Social.png
+    threshold: 0.8
+    region:
+      x1: 120
+      y1: 500
+      x2: 155
+      y2: 530
+
+  # Buttons
+  - name: Accept
+    path: ui/Accept.png
+    threshold: 0.8
+
+  - name: Confirm
+    path: ui/Confirm.png
+    threshold: 0.8
+    region:
+      x1: 110
+      y1: 350
+      x2: 150
+      y2: 404
+
+  - name: OK
+    path: ui/OK.png
+    threshold: 0.8
+
+  - name: Skip
+    path: ui/Skip.png
+    threshold: 0.8
+    region:
+      x1: 233
+      y1: 486
+      x2: 272
+      y2: 519
+
+  # Missions
+  - name: Missions
+    path: ui/Missions.png
+    threshold: 0.8
+    region:
+      x1: 15
+      y1: 456
+      x2: 18
+      y2: 473
+
+  - name: DailyMissions
+    path: ui/DailyMissions.png
+    threshold: 0.8
+    region:
+      x1: 37
+      y1: 130
+      x2: 64
+      y2: 156
+
+  - name: Claim
+    path: ui/Claim.png
+    threshold: 0.8
+
+  - name: ClaimAll
+    path: ui/ClaimAll.png
+    threshold: 0.8
+
+  # Packs
+  - name: Pack
+    path: ui/Pack.png
+    threshold: 0.8
+    region:
+      x1: 225
+      y1: 273
+      x2: 235
+      y2: 290
+
+  - name: ConfirmPack
+    path: ui/ConfirmPack.png
+    threshold: 0.8
+    region:
+      x1: 121
+      y1: 465
+      x2: 140
+      y2: 485
+
+  - name: HourglassPack
+    path: ui/HourglassPack.png
+    threshold: 0.8
+    region:
+      x1: 60
+      y1: 440
+      x2: 90
+      y2: 480
+
+  # Wonder Pick
+  - name: WonderPick
+    path: ui/WonderPick.png
+    threshold: 0.8
+    region:
+      x1: 240
+      y1: 80
+      x2: 265
+      y2: 100
+
+  - name: Pick
+    path: ui/Pick.png
+    threshold: 0.8
+    region:
+      x1: 60
+      y1: 130
+      x2: 202
+      y2: 142
+
+  # Friends
+  - name: Friends
+    path: ui/Friends.png
+    threshold: 0.8
+    region:
+      x1: 84
+      y1: 463
+      x2: 100
+      y2: 475
+
+  - name: Friend
+    path: ui/Friend.png
+    threshold: 0.8
+
+  - name: Add
+    path: ui/Add.png
+    threshold: 0.8
+    region:
+      x1: 226
+      y1: 100
+      x2: 270
+      y2: 135
+
+  - name: Send
+    path: ui/Send.png
+    threshold: 0.8
+    region:
+      x1: 165
+      y1: 250
+      x2: 190
+      y2: 275
+
+  # Error Handling (rarely used - unload after use to save memory)
+  - name: Error
+    path: ui/Error.png
+    threshold: 0.8
+    unload_after: true  # Rarely used, free memory after detection
+
+  - name: NoResponse
+    path: ui/NoResponse.png
+    threshold: 0.8
+    unload_after: true  # Rarely used
+    region:
+      x1: 38
+      y1: 281
+      x2: 57
+      y2: 308
+
+  # Account Creation (rarely used - unload after)
+  - name: Welcome
+    path: ui/Welcome.png
+    threshold: 0.8
+    unload_after: true  # Only used during account creation

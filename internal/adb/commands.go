@@ -31,9 +31,9 @@ func (c *Controller) Click(x, y int) error {
 }
 
 // Swipe performs a swipe gesture
-func (c *Controller) Swipe(params SwipeParams) error {
+func (c *Controller) Swipe(X1, Y1, X2, Y2 int, duration int) error {
 	cmd := fmt.Sprintf("input swipe %d %d %d %d %d",
-		translateX(params.X1), translateY(params.Y1), translateX(params.X2), translateX(params.Y2), params.Duration)
+		translateX(X1), translateY(Y1), translateX(X2), translateX(Y2), duration)
 	_, err := c.Shell(cmd)
 	return err
 }

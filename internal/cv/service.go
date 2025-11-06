@@ -10,10 +10,23 @@ import (
 	"time"
 )
 
+// TemplateRegistryInterface defines interface for template registry access
+type TemplateRegistryInterface interface {
+	Get(name string) (Template, bool)
+	ImageCache() ImageCacheInterface
+}
+
+// ImageCacheInterface defines interface for image cache access
+type ImageCacheInterface interface {
+	Get(name string) (*image.RGBA, Template, error)
+	Release(name string) error
+}
+
 // Service handles all computer vision operations
 type Service struct {
-	capturer      Capturer
-	templateCache map[string]*image.RGBA
+	capturer         Capturer
+	templateCache    map[string]*image.RGBA
+	templateRegistry TemplateRegistryInterface // Optional: for cached template images
 
 	// Frame caching for performance
 	cachedFrame     *image.RGBA
@@ -54,6 +67,14 @@ func NewServiceWithTitleBar(capturer Capturer, titleBarHeight int) *Service {
 		cacheDuration:  100 * time.Millisecond,
 		titleBarHeight: titleBarHeight,
 	}
+}
+
+// WithTemplateRegistry sets the template registry for image caching
+func (s *Service) WithTemplateRegistry(registry TemplateRegistryInterface) *Service {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.templateRegistry = registry
+	return s
 }
 
 // SetTitleBarHeight updates the title bar exclusion height
@@ -111,7 +132,7 @@ func (s *Service) GetDimensions() (width, height int) {
 }
 
 // FindTemplate finds a template by name in the current frame
-func (s *Service) FindTemplate(templatePath string, config *MatchConfig) (*MatchResult, error) {
+func (s *Service) FindTemplate(templateName string, config *MatchConfig) (*MatchResult, error) {
 	// Get cached frame
 	frame, err := s.CaptureFrame(true)
 	if err != nil {
@@ -119,7 +140,7 @@ func (s *Service) FindTemplate(templatePath string, config *MatchConfig) (*Match
 	}
 
 	// Load template (with caching)
-	template, err := s.loadTemplate(templatePath)
+	template, err := s.loadTemplate(templateName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load template: %w", err)
 	}
@@ -174,13 +195,13 @@ func (s *Service) FindMultipleTemplates(templatePaths []string, config *MatchCon
 }
 
 // WaitForTemplate waits until template appears (or timeout)
-func (s *Service) WaitForTemplate(templatePath string, config *MatchConfig, timeout time.Duration) (*MatchResult, error) {
+func (s *Service) WaitForTemplate(templateName string, config *MatchConfig, timeout time.Duration) (*MatchResult, error) {
 	start := time.Now()
 
 	for {
 		// Always get fresh frame when waiting
 		s.InvalidateCache()
-		result, err := s.FindTemplate(templatePath, config)
+		result, err := s.FindTemplate(templateName, config)
 		if err != nil {
 			return nil, err
 		}
@@ -238,46 +259,74 @@ func (s *Service) GetPixelColor(x, y int) (color.Color, error) {
 
 // Template management
 
-func (s *Service) loadTemplate(path string) (*image.RGBA, error) {
+func (s *Service) loadTemplate(templateName string) (*image.RGBA, error) {
+	// First check the service's local cache
 	s.mu.RLock()
-	if cached, ok := s.templateCache[path]; ok {
+	if cached, ok := s.templateCache[templateName]; ok {
 		s.mu.RUnlock()
 		return cached, nil
 	}
+
+	// Try to get from template registry's image cache if available
+	registry := s.templateRegistry
 	s.mu.RUnlock()
 
-	// Load from file
-	file, err := os.Open(fmt.Sprintf("templates/%s.png", path))
-	if err != nil {
-		return nil, fmt.Errorf("failed to open template file: %w", err)
-	}
-	defer file.Close()
-
-	img, err := png.Decode(file)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode template: %w", err)
-	}
-
-	// Convert to RGBA
-	var rgba *image.RGBA
-	if r, ok := img.(*image.RGBA); ok {
-		rgba = r
-	} else {
-		bounds := img.Bounds()
-		rgba = image.NewRGBA(bounds)
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				rgba.Set(x, y, img.At(x, y))
+	if registry != nil {
+		imageCache := registry.ImageCache()
+		if imageCache != nil {
+			// Try to get by template name (path might be the template name)
+			img, _, err := imageCache.Get(templateName)
+			if err == nil {
+				// Cache it locally too for consistency
+				s.mu.Lock()
+				s.templateCache[templateName] = img
+				s.mu.Unlock()
+				return img, nil
 			}
 		}
 	}
 
-	// Cache it
-	s.mu.Lock()
-	s.templateCache[path] = rgba
-	s.mu.Unlock()
+	// Fallback: template not in image cache but might be in registry
+	// Get template from registry to access its path
+	if registry != nil {
+		if template, ok := registry.Get(templateName); ok {
+			// Load from template's actual path
+			file, err := os.Open(string(template.Path))
+			if err != nil {
+				return nil, fmt.Errorf("failed to open template file %s: %w", template.Path, err)
+			}
+			defer file.Close()
 
-	return rgba, nil
+			img, err := png.Decode(file)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode template: %w", err)
+			}
+
+			// Convert to RGBA
+			var rgba *image.RGBA
+			if r, ok := img.(*image.RGBA); ok {
+				rgba = r
+			} else {
+				bounds := img.Bounds()
+				rgba = image.NewRGBA(bounds)
+				for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+					for x := bounds.Min.X; x < bounds.Max.X; x++ {
+						rgba.Set(x, y, img.At(x, y))
+					}
+				}
+			}
+
+			// Cache it locally
+			s.mu.Lock()
+			s.templateCache[templateName] = rgba
+			s.mu.Unlock()
+
+			return rgba, nil
+		}
+	}
+
+	// Template not found in registry
+	return nil, fmt.Errorf("template '%s' not found in registry", templateName)
 }
 
 // ClearTemplateCache clears template cache (useful if templates change)

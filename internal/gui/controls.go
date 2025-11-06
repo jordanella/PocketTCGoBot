@@ -11,11 +11,11 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
-	"jordanella.com/pocket-tcg-go/internal/actions"
+	_ "jordanella.com/pocket-tcg-go/internal/actions"
 	"jordanella.com/pocket-tcg-go/internal/bot"
 	"jordanella.com/pocket-tcg-go/internal/cv"
 	"jordanella.com/pocket-tcg-go/internal/emulator"
-	"jordanella.com/pocket-tcg-go/pkg/templates"
+	_ "jordanella.com/pocket-tcg-go/pkg/templates"
 )
 
 // ControlTab provides bot control and management
@@ -472,35 +472,12 @@ func (c *ControlTab) testFindAndClickCenter() {
 			c.controller.logTab.AddLog(LogLevelInfo, instanceNum, fmt.Sprintf("Finding and clicking template: %s", selectedTemplate))
 
 			// Get the appropriate template from the templates package
-			var tmpl cv.Template
-			switch selectedTemplate {
-			case "Shop":
-				tmpl = templates.Shop
-			case "DailyMissions":
-				tmpl = templates.DailyMissions
-			case "Menu":
-				tmpl = templates.Menu
-			case "Mail":
-				tmpl = templates.Mail
-			default:
-				c.showError(fmt.Sprintf("Unknown template: %s", selectedTemplate))
-				return
-			}
-
-			// Create a new action library and use it to perform FindAndClickCenter
-			actionLib := actions.NewLibrary(b)
-			err := actionLib.Action().
-				FindAndClickCenter(tmpl).
-				Execute()
-
-			if err != nil {
-				c.showError(fmt.Sprintf("Failed to find and click template: %v", err))
-				c.controller.logTab.AddLog(LogLevelError, instanceNum, fmt.Sprintf("FindAndClickCenter failed: %v", err))
-				return
-			}
-
-			c.controller.logTab.AddLog(LogLevelInfo, instanceNum, fmt.Sprintf("Successfully found and clicked %s", selectedTemplate))
-			c.showSuccess(fmt.Sprintf("Found and clicked %s template", selectedTemplate))
+			// TODO: Update to use new YAML-based routine system
+			// This functionality needs to be reimplemented with the new action system
+			c.showError("This feature is temporarily disabled during refactoring")
+			c.controller.logTab.AddLog(LogLevelInfo, instanceNum, "FindAndClickCenter is temporarily disabled")
+			_ = selectedTemplate // Suppress unused variable warning
+			_ = b                // Suppress unused variable warning
 		}()
 	}, c.controller.window)
 
