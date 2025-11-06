@@ -1,0 +1,221 @@
+# PocketTCG Bot .gitignore
+
+# Binaries and Executables
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+pocket-bot
+pocket-bot-gui
+bot
+bot-gui
+
+# Test binaries
+*.test
+
+# Go coverage files
+*.out
+coverage.txt
+coverage.html
+
+# Go build cache
+go.build
+
+# Go workspace file (if using Go workspaces)
+go.work
+go.work.sum
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Account Data - IMPORTANT: Keep private!
+bin/accounts/*.xml
+bin/accounts/**/*.xml
+
+# Account Backups
+bin/accounts/backups/
+bin/accounts/backup/
+
+# Settings (may contain sensitive configuration)
+bin/Settings.ini
+
+# Database files (when implemented)
+*.db
+*.sqlite
+*.sqlite3
+bin/*.db
+bin/database/
+
+# Logs
+*.log
+logs/
+bin/logs/
+*.log.*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# ADB files
+adb.exe
+fastboot.exe
+
+# Debug files
+debug/
+*.pprof
+*.trace
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+dist/
+build/
+release/
+
+# Screenshots and recordings (testing artifacts)
+screenshots/
+recordings/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.mp4
+*.avi
+
+# EXCEPT: Keep template images
+!bin/templates/*.png
+!bin/templates/**/*.png
+!docs/**/*.png
+!docs/**/*.jpg
+
+# Vendor directory (if vendoring dependencies)
+vendor/
+
+# Air live reload config (if using)
+.air.toml
+tmp/
+
+# Test coverage
+*.coverprofile
+
+# macOS
+.AppleDouble
+.LSOverride
+
+# Linux
+.directory
+
+# Windows installer files
+*.msi
+*.msm
+*.msp
+
+# Compressed files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Example/Sample files to exclude
+bin/Settings.ini.example
+bin/accounts/example_account.xml
+
+# Discord webhook URLs (if stored locally)
+webhook.txt
+webhooks.txt
+
+# OCR training data (potentially large)
+ocr_data/
+training_data/
+
+# Performance profiling
+*.prof
+profile.out
+mem.prof
+cpu.prof
+
+# Generated documentation
+docs/generated/
+
+# MuMu Player logs or exports
+mumu_logs/
+exports/
+
+# Bot statistics and metrics
+stats/
+metrics/
+bin/stats/
+bin/metrics/
+
+# Backup files
+*.bak
+*.backup
+*~.xml
+
+# Node modules (if any web dashboard is added)
+node_modules/
+
+# Python cache (if any Python tooling is used)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local testing scripts
+test_local.sh
+test_local.bat
+run_local.sh
+run_local.bat
+
+# Personal notes
+NOTES.md
+TODO.md
+PERSONAL.md
+
+# Sensitive data
+secrets/
+credentials/
+tokens/
+*.key
+*.pem
+*.cert
+
+# Fyne build cache
+fyne-cross/
+
+# Go module cache (let Go manage this)
+# vendor/ already listed above
+
+# OS generated files
+._*
+.Spotlight-V100
+.Trashes
+
+# CI/CD local artifacts
+.github/workflows/local/
+
+# Docker files (if Docker support is added later)
+docker-compose.override.yml
+.dockerignore.local
+
+# Reference materials
+reference/
+llm/
+
+# Claude
+.claude/*
