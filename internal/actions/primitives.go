@@ -53,6 +53,22 @@ func (ab *ActionBuilder) Sleep(d time.Duration) *ActionBuilder {
 	return ab
 }
 
+// Delay waits for a duration based on the config's Delay setting multiplied by the provided multiplier
+// For example, if config.Delay is 100ms and multiplier is 3, it will sleep for 300ms
+func (ab *ActionBuilder) Delay(multiplier int) *ActionBuilder {
+	step := Step{
+		name: "Delay",
+		execute: func() error {
+			delayMs := ab.bot.Config().Actions().GetDelayBetweenActions()
+			duration := time.Duration(delayMs*multiplier) * time.Millisecond
+			time.Sleep(duration)
+			return nil
+		},
+	}
+	ab.steps = append(ab.steps, step)
+	return ab
+}
+
 func (ab *ActionBuilder) SendKey(key string) *ActionBuilder {
 	step := Step{
 		name: "SendKey",
