@@ -14,6 +14,7 @@ const (
 	ErrorUpdate                          // Update required
 	ErrorBanned                          // Account banned/suspended
 	ErrorTitleScreen                     // Returned to title screen unexpectedly
+	ErrorTimeout                         // Action exceeded maximum runtime
 	ErrorCustom                          // Custom error type
 )
 

@@ -35,6 +35,14 @@ func (ab *ActionBuilder) WithTimeout(d time.Duration) *ActionBuilder {
 	return ab
 }
 
+// Timeout sets a timeout in seconds for the entire action sequence
+// This is a convenience method that calls WithTimeout with seconds converted to duration
+// If the action exceeds this timeout, it will be aborted with a timeout error
+func (ab *ActionBuilder) Timeout(seconds int) *ActionBuilder {
+	ab.timeout = time.Duration(seconds) * time.Second
+	return ab
+}
+
 func (ab *ActionBuilder) WithRetries(n int) *ActionBuilder {
 	ab.retries = n
 	return ab

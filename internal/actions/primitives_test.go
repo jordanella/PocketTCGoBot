@@ -166,3 +166,74 @@ func TestSleep(t *testing.T) {
 		t.Errorf("Sleep was too long: got %v, expected at most %v", duration, expectedMax)
 	}
 }
+
+func TestTimeout(t *testing.T) {
+	tests := []struct {
+		name            string
+		timeoutSeconds  int
+		expectedTimeout time.Duration
+	}{
+		{
+			name:            "Timeout 1 second",
+			timeoutSeconds:  1,
+			expectedTimeout: 1 * time.Second,
+		},
+		{
+			name:            "Timeout 5 seconds",
+			timeoutSeconds:  5,
+			expectedTimeout: 5 * time.Second,
+		},
+		{
+			name:            "Timeout 30 seconds",
+			timeoutSeconds:  30,
+			expectedTimeout: 30 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bot := &mockBot{
+				config: mockBotConfig{delayMs: 100},
+			}
+
+			ab := &ActionBuilder{
+				bot:   bot,
+				steps: []Step{},
+				ctx:   context.Background(),
+			}
+
+			// Set timeout
+			ab.Timeout(tt.timeoutSeconds)
+
+			// Verify timeout was set correctly
+			if ab.timeout != tt.expectedTimeout {
+				t.Errorf("Expected timeout %v, got %v", tt.expectedTimeout, ab.timeout)
+			}
+		})
+	}
+}
+
+func TestTimeoutChaining(t *testing.T) {
+	bot := &mockBot{
+		config: mockBotConfig{delayMs: 100},
+	}
+
+	ab := &ActionBuilder{
+		bot:   bot,
+		steps: []Step{},
+		ctx:   context.Background(),
+	}
+
+	// Test chaining
+	ab.Timeout(10).
+		Sleep(100 * time.Millisecond).
+		Delay(2)
+
+	if ab.timeout != 10*time.Second {
+		t.Errorf("Expected timeout 10s, got %v", ab.timeout)
+	}
+
+	if len(ab.steps) != 2 {
+		t.Errorf("Expected 2 steps, got %d", len(ab.steps))
+	}
+}
