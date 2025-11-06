@@ -2,6 +2,7 @@ package gui
 
 import (
 	"fmt"
+	"path/filepath"
 	"sync"
 
 	"fyne.io/fyne/v2"
@@ -9,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 	"jordanella.com/pocket-tcg-go/internal/bot"
+	"jordanella.com/pocket-tcg-go/internal/database"
 	"jordanella.com/pocket-tcg-go/internal/emulator"
 )
 
@@ -34,6 +36,15 @@ type Controller struct {
 	resultsTab *ResultsTab
 	controlTab *ControlTab
 	adbTestTab *ADBTestTab
+
+	// Database tabs
+	db              *database.DB
+	dbAccountsTab   *DatabaseAccountsTab
+	dbActivityTab   *DatabaseActivityTab
+	dbErrorsTab     *DatabaseErrorsTab
+	dbPacksTab      *DatabasePacksTab
+	dbCollectionTab *DatabaseCollectionTab
+	dbTabContainer  *fyne.Container
 
 	// Content area reference for tab switching
 	contentArea *fyne.Container
@@ -61,14 +72,17 @@ func NewController(cfg *bot.Config, app fyne.App, window fyne.Window) *Controlle
 	// Start event bus with app reference for main thread dispatch
 	ctrl.eventBus.Start(app)
 
-	// Initialize tabs
+	// Initialize tabs (log tab must be first for database init logging)
+	ctrl.logTab = NewLogTab(ctrl)
 	ctrl.dashboard = NewDashboardTab(ctrl)
 	ctrl.configTab = NewConfigTab(ctrl)
-	ctrl.logTab = NewLogTab(ctrl)
 	ctrl.accountTab = NewAccountTab(ctrl)
 	ctrl.resultsTab = NewResultsTab(ctrl)
 	ctrl.controlTab = NewControlTab(ctrl)
 	ctrl.adbTestTab = NewADBTestTab(ctrl)
+
+	// Initialize database after log tab is ready
+	ctrl.initializeDatabase()
 
 	// Subscribe event handlers
 	ctrl.setupEventHandlers()
@@ -77,6 +91,51 @@ func NewController(cfg *bot.Config, app fyne.App, window fyne.Window) *Controlle
 	ctrl.RefreshMuMuInstances()
 
 	return ctrl
+}
+
+// initializeDatabase initializes the database and database tabs
+func (c *Controller) initializeDatabase() {
+	// Database path - use current working directory
+	dbPath := "bot.db"
+
+	// Log the database path
+	if c.logTab != nil {
+		absPath, _ := filepath.Abs(dbPath)
+		c.logTab.AddLog(LogLevelInfo, 0, fmt.Sprintf("Initializing database at: %s", absPath))
+	}
+
+	// Try to open database
+	db, err := database.Open(dbPath)
+	if err != nil {
+		// Log error but don't fail - database tabs will show error message
+		if c.logTab != nil {
+			c.logTab.AddLog(LogLevelWarn, 0, fmt.Sprintf("Failed to open database: %v", err))
+		}
+		c.db = nil
+	} else {
+		c.db = db
+
+		// Run migrations
+		if err := db.RunMigrations(); err != nil {
+			if c.logTab != nil {
+				c.logTab.AddLog(LogLevelError, 0, fmt.Sprintf("Failed to run database migrations: %v", err))
+			}
+			db.Close()
+			c.db = nil
+		} else {
+			// Log success
+			if c.logTab != nil {
+				c.logTab.AddLog(LogLevelInfo, 0, "Database initialized successfully")
+			}
+		}
+	}
+
+	// Initialize database tabs (they handle nil database gracefully)
+	c.dbAccountsTab = NewDatabaseAccountsTab(c, c.db)
+	c.dbActivityTab = NewDatabaseActivityTab(c, c.db)
+	c.dbErrorsTab = NewDatabaseErrorsTab(c, c.db)
+	c.dbPacksTab = NewDatabasePacksTab(c, c.db)
+	c.dbCollectionTab = NewDatabaseCollectionTab(c, c.db)
 }
 
 // BuildUI constructs the main UI with horizontal tabs
@@ -90,7 +149,11 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 		widget.NewButton("Results", func() { c.switchTab(4) }),
 		widget.NewButton("Controls", func() { c.switchTab(5) }),
 		widget.NewButton("ADB Test", func() { c.switchTab(6) }),
+		widget.NewButton("Database", func() { c.switchTab(7) }),
 	)
+
+	// Create database tab with nested tabs (after database tabs are initialized)
+	c.dbTabContainer = c.buildDatabaseTab()
 
 	// Create content area (will switch based on selected tab)
 	c.contentArea = container.NewStack(
@@ -101,6 +164,7 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 		c.resultsTab.Build(),
 		c.controlTab.Build(),
 		c.adbTestTab.Build(),
+		c.dbTabContainer,
 	)
 
 	// Initial state: show dashboard
@@ -113,6 +177,37 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 		nil,           // Left
 		nil,           // Right
 		c.contentArea, // Center
+	)
+}
+
+// buildDatabaseTab creates a tabbed container for database views
+func (c *Controller) buildDatabaseTab() *fyne.Container {
+	// Check if database tabs are initialized
+	if c.dbAccountsTab == nil || c.dbActivityTab == nil || c.dbErrorsTab == nil ||
+		c.dbPacksTab == nil || c.dbCollectionTab == nil {
+		// Return empty container with error message
+		return container.NewCenter(
+			widget.NewLabel("Database tabs not initialized"),
+		)
+	}
+
+	// Create nested tabs for different database views
+	tabs := container.NewAppTabs(
+		container.NewTabItem("Accounts", c.dbAccountsTab.Build()),
+		container.NewTabItem("Activity", c.dbActivityTab.Build()),
+		container.NewTabItem("Errors", c.dbErrorsTab.Build()),
+		container.NewTabItem("Pack Results", c.dbPacksTab.Build()),
+		container.NewTabItem("Collection", c.dbCollectionTab.Build()),
+	)
+
+	tabs.SetTabLocation(container.TabLocationTop)
+
+	return container.NewBorder(
+		nil,  // Top
+		nil,  // Bottom
+		nil,  // Left
+		nil,  // Right
+		tabs, // Center
 	)
 }
 
@@ -138,7 +233,7 @@ func (c *Controller) showTab(tabIndex int, contentArea *fyne.Container) {
 	}
 
 	// Hide all tabs
-	for i := 0; i < 7; i++ {
+	for i := 0; i < 8; i++ {
 		if i < len(contentArea.Objects) {
 			contentArea.Objects[i].Hide()
 		}
@@ -209,6 +304,12 @@ func (c *Controller) Shutdown() {
 		b.Shutdown()
 	}
 	c.bots = make(map[int]*bot.Bot)
+
+	// Close database
+	if c.db != nil {
+		c.db.Close()
+		c.db = nil
+	}
 
 	// Stop event bus
 	if c.eventBus != nil {
