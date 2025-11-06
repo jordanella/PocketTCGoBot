@@ -5,6 +5,7 @@ import (
 
 	"jordanella.com/pocket-tcg-go/internal/adb"
 	"jordanella.com/pocket-tcg-go/internal/cv"
+	"jordanella.com/pocket-tcg-go/internal/monitor"
 )
 
 // BotInterface defines the capabilities that actions need from the bot
@@ -14,6 +15,7 @@ type BotInterface interface {
 	// Access to core services
 	ADB() *adb.Controller
 	CV() *cv.Service
+	ErrorMonitor() *monitor.ErrorMonitor
 
 	// Context management
 	Context() context.Context
