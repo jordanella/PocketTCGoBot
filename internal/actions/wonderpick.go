@@ -10,14 +10,14 @@ import (
 func (l *Library) DoWonderPickOnly() error {
 	// Loop 1: Select a WonderPick and wait until we're in the card selection screen
 	err := l.Action().
-		UntilTemplateAppearsRun(templates.Card,
+		UntilTemplateAppears(templates.Card,
 			l.Action().
 				// Click first wonderpick slot, then backup second slot
 				Click(80, 390).
 				Click(80, 460).
 				Sleep(1*time.Second).
 				// Check if out of WonderPick energy
-				IfTemplateExistsRun(templates.NoWPEnergy, l.Action().
+				IfTemplateExists(templates.NoWPEnergy, l.Action().
 					Sleep(2*time.Second).
 					Click(137, 505). // Dismiss dialog
 					Sleep(2*time.Second).
@@ -25,7 +25,7 @@ func (l *Library) DoWonderPickOnly() error {
 					Sleep(4*time.Second)).
 				// TODO: Log "No WonderPick Energy left!"
 				// Check if we're on WonderPick screen
-				IfTemplateExistsRun(templates.WonderPick, l.Action().
+				IfTemplateExists(templates.WonderPick, l.Action().
 					// Look for and click the Button to start the pick
 					FindAndClickCenter(templates.Button.InRegion(100, 367, 190, 480)).
 					Sleep(3*time.Second)),
@@ -38,7 +38,7 @@ func (l *Library) DoWonderPickOnly() error {
 	// Loop 2: Click card until it's selected (Card template disappears)
 	err = l.Action().
 		Sleep(300*time.Millisecond).
-		UntilTemplateDisappearsRun(templates.Card,
+		UntilTemplateDisappears(templates.Card,
 			l.Action().
 				Click(183, 350). // Click card position
 				Sleep(1*time.Second),
@@ -50,7 +50,7 @@ func (l *Library) DoWonderPickOnly() error {
 
 	// Loop 3: Click through results until Skip or WonderPick screen appears
 	err = l.Action().
-		UntilAnyTemplateRun([]cv.Template{templates.Skip, templates.WonderPick},
+		UntilAnyTemplate([]cv.Template{templates.Skip, templates.WonderPick},
 			l.Action().
 				Click(146, 494). // Click to advance
 				Sleep(1*time.Second).
@@ -63,7 +63,7 @@ func (l *Library) DoWonderPickOnly() error {
 
 	// Loop 4: Navigate back to Shop (main menu)
 	err = l.Action().
-		UntilTemplateAppearsRun(templates.Shop,
+		UntilTemplateAppears(templates.Shop,
 			l.Action().
 				Sleep(1*time.Second).
 				IfTemplateExistsClick(templates.Skip).
@@ -110,10 +110,9 @@ func (l *Library) DoWonderPick() error {
 	}
 
 	err = l.Action().
-		UntilAnyTemplate(missionTemplates, func(ab *ActionBuilder) {
-			ab.Click(261, 478).
-				Sleep(1 * time.Second)
-		}, 0).
+		UntilAnyTemplate(missionTemplates, l.Action().
+			Click(261, 478).
+			Sleep(1*time.Second), 0).
 		FindAndClickCenter(templates.FirstMission).
 		Sleep(1 * time.Second).
 		Execute()
@@ -124,7 +123,7 @@ func (l *Library) DoWonderPick() error {
 	// Collect mission rewards loop
 	// Click through rewards until we're back at the main menu (Shop icon visible)
 	err = l.Action().
-		UntilTemplateAppearsRun(templates.Shop,
+		UntilTemplateAppears(templates.Shop,
 			l.Action().
 				Click(139, 424).
 				Sleep(1*time.Second).

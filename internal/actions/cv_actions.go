@@ -13,23 +13,15 @@ import (
 
 // CV-based action primitives
 
-// Helper functions
-func translateX(x int) int {
-	return 540 / 277 * x
-}
-
-func translateY(y int) int {
-	return 960/489*y + 44
-}
-
 // FindTemplate finds a template in the current screen
-func (ab *ActionBuilder) FindTemplate(templatePath string, threshold float64) *ActionBuilder {
+func (ab *ActionBuilder) FindTemplate(template cv.Template) *ActionBuilder {
+	templatePath := buildTemplatePath(template.Name)
 	step := Step{
-		name: fmt.Sprintf("FindTemplate(%s)", templatePath),
+		name: fmt.Sprintf("FindTemplate(%s)", buildTemplatePath(template.Name)),
 		execute: func() error {
 			config := &cv.MatchConfig{
 				Method:    cv.MatchMethodSSD,
-				Threshold: threshold,
+				Threshold: template.Threshold,
 			}
 
 			result, err := ab.bot.CV().FindTemplate(templatePath, config)
@@ -49,7 +41,9 @@ func (ab *ActionBuilder) FindTemplate(templatePath string, threshold float64) *A
 }
 
 // WaitForTemplate waits for a template to appear
-func (ab *ActionBuilder) WaitForTemplate(templatePath string, threshold float64, timeout time.Duration) *ActionBuilder {
+func (ab *ActionBuilder) WaitForTemplate(template cv.Template, timeout time.Duration) *ActionBuilder {
+	templatePath := buildTemplatePath(template.Name)
+	threshold := template.Threshold
 	step := Step{
 		name: fmt.Sprintf("WaitForTemplate(%s, %v)", templatePath, timeout),
 		execute: func() error {
@@ -76,7 +70,9 @@ func (ab *ActionBuilder) WaitForTemplate(templatePath string, threshold float64,
 }
 
 // FindAndClickTemplate finds a template and clicks it
-func (ab *ActionBuilder) FindAndClickTemplate(templatePath string, threshold float64, offsetX int, offsetY int) *ActionBuilder {
+func (ab *ActionBuilder) FindAndClickTemplate(template cv.Template, offsetX int, offsetY int) *ActionBuilder {
+	templatePath := buildTemplatePath(template.Name)
+	threshold := template.Threshold
 	step := Step{
 		name: fmt.Sprintf("FindAndClickTemplate(%s)", templatePath),
 		execute: func() error {
@@ -143,7 +139,9 @@ func (ab *ActionBuilder) FindAndClickCenter(template cv.Template) *ActionBuilder
 }
 
 // WaitForTemplateAndClick waits for template then clicks it
-func (ab *ActionBuilder) WaitForTemplateAndClick(templatePath string, threshold float64, timeout time.Duration, offsetX, offsetY int) *ActionBuilder {
+func (ab *ActionBuilder) WaitForTemplateAndClick(template cv.Template, timeout time.Duration, offsetX, offsetY int) *ActionBuilder {
+	templatePath := buildTemplatePath(template.Name)
+	threshold := template.Threshold
 	step := Step{
 		name: fmt.Sprintf("WaitForTemplateAndClick(%s)", templatePath),
 		execute: func() error {
@@ -174,7 +172,9 @@ func (ab *ActionBuilder) WaitForTemplateAndClick(templatePath string, threshold 
 }
 
 // WaitForTemplateDisappear waits for a template to disappear (e.g., loading screen)
-func (ab *ActionBuilder) WaitForTemplateDisappear(templatePath string, threshold float64, timeout time.Duration) *ActionBuilder {
+func (ab *ActionBuilder) WaitForTemplateDisappear(template cv.Template, timeout time.Duration) *ActionBuilder {
+	templatePath := buildTemplatePath(template.Name)
+	threshold := template.Threshold
 	step := Step{
 		name: fmt.Sprintf("WaitForTemplateDisappear(%s)", templatePath),
 		execute: func() error {
@@ -300,42 +300,12 @@ func (ab *ActionBuilder) WaitForColor(x, y int, expected color.Color, tolerance 
 	return ab
 }
 
-// IfTemplateExists conditionally executes actions if template is found
-// You can pass either a func(*ActionBuilder) or use IfTemplateExistsRun with a pre-built ActionBuilder
-func (ab *ActionBuilder) IfTemplateExists(template cv.Template, then func(*ActionBuilder)) *ActionBuilder {
-	step := Step{
-		name: fmt.Sprintf("IfTemplateExists(%s)", template.Name),
-		execute: func() error {
-			config := buildMatchConfig(template, cv.MatchMethodSSD)
-
-			result, err := ab.bot.CV().FindTemplate(template.Name, config)
-			if err != nil {
-				return nil // Ignore errors, just skip
-			}
-
-			if result.Found {
-				// Execute conditional actions
-				subBuilder := &ActionBuilder{
-					bot: ab.bot,
-					ctx: ab.ctx,
-				}
-				then(subBuilder)
-				return subBuilder.Execute()
-			}
-
-			return nil
-		},
-	}
-	ab.steps = append(ab.steps, step)
-	return ab
-}
-
 // IfTemplateExistsRun conditionally executes a pre-built ActionBuilder if template is found
 // This allows you to build the actions separately without a callback:
 //
 //	clickButton := l.Action().Click(100, 200).Sleep(1*time.Second)
 //	l.Action().IfTemplateExistsRun(templates.Button, clickButton).Execute()
-func (ab *ActionBuilder) IfTemplateExistsRun(template cv.Template, then *ActionBuilder) *ActionBuilder {
+func (ab *ActionBuilder) IfTemplateExists(template cv.Template, then *ActionBuilder) *ActionBuilder {
 	step := Step{
 		name: fmt.Sprintf("IfTemplateExists(%s)", template.Name),
 		execute: func() error {
@@ -429,44 +399,6 @@ func (ab *ActionBuilder) IfTemplateExistsClickPoint(template cv.Template, X int,
 	return ab
 }
 
-// UntilTemplateAppears repeats actions until template appears
-func (ab *ActionBuilder) UntilTemplateAppears(template cv.Template, action func(*ActionBuilder), maxAttempts int) *ActionBuilder {
-	step := Step{
-		name: fmt.Sprintf("UntilTemplateAppears(%s)", buildTemplatePath(template.Name)),
-		execute: func() error {
-			config := &cv.MatchConfig{
-				Method:    cv.MatchMethodSSD,
-				Threshold: template.Threshold,
-			}
-
-			for attempt := 0; attempt < maxAttempts; attempt++ {
-				ab.bot.CV().InvalidateCache()
-
-				result, err := ab.bot.CV().FindTemplate(buildTemplatePath(template.Name), config)
-				if err == nil && result.Found {
-					return nil // Template appeared!
-				}
-
-				// Execute action
-				subBuilder := &ActionBuilder{
-					bot: ab.bot,
-					ctx: ab.ctx,
-				}
-				action(subBuilder)
-				if err := subBuilder.Execute(); err != nil {
-					return fmt.Errorf("action failed on attempt %d: %w", attempt+1, err)
-				}
-
-				time.Sleep(500 * time.Millisecond)
-			}
-
-			return fmt.Errorf("template did not appear after %d attempts", maxAttempts)
-		},
-	}
-	ab.steps = append(ab.steps, step)
-	return ab
-}
-
 // UntilTemplateAppearsRun repeats a pre-built ActionBuilder's steps until template appears
 // This allows you to pass an ActionBuilder directly without a callback:
 //
@@ -474,7 +406,7 @@ func (ab *ActionBuilder) UntilTemplateAppears(template cv.Template, action func(
 //	err := l.Action().UntilTemplateAppearsRun(templates.Shop, clickAction, 45).Execute()
 //
 // The ActionBuilder's steps will be re-executed on each loop iteration
-func (ab *ActionBuilder) UntilTemplateAppearsRun(template cv.Template, actions *ActionBuilder, maxAttempts int) *ActionBuilder {
+func (ab *ActionBuilder) UntilTemplateAppears(template cv.Template, actions *ActionBuilder, maxAttempts int) *ActionBuilder {
 	step := Step{
 		name: fmt.Sprintf("UntilTemplateAppears(%s)", buildTemplatePath(template.Name)),
 		execute: func() error {
@@ -630,7 +562,7 @@ func loadTemplateImage(name string) (image.Image, error) {
 }
 
 func regionCenter(region cv.Region) (int, int) {
-	return region.X1 + (region.X1+region.X2)/2, region.Y1 + (region.Y1+region.Y2)/2
+	return region.X1 + (region.X2-region.X1)/2, region.Y1 + (region.Y2-region.Y1)/2
 }
 
 // buildMatchConfig creates a MatchConfig from a Template, applying region and threshold

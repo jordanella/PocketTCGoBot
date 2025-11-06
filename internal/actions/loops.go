@@ -191,46 +191,8 @@ func (ab *ActionBuilder) While(condition func() bool, action func(*ActionBuilder
 // Template-Based Loops (Common Patterns)
 // ============================================================================
 
-// UntilAnyTemplate loops until any of the specified templates appears
-func (ab *ActionBuilder) UntilAnyTemplate(templates []cv.Template, action func(*ActionBuilder), maxAttempts int) *ActionBuilder {
-	step := Step{
-		name: fmt.Sprintf("UntilAnyTemplate(%d templates)", len(templates)),
-		execute: func() error {
-			attempt := 0
-			for {
-				if maxAttempts > 0 && attempt >= maxAttempts {
-					return fmt.Errorf("template not found after %d attempts", maxAttempts)
-				}
-
-				// Check if any template exists
-				ab.bot.CV().InvalidateCache()
-				for _, tmpl := range templates {
-					if ab.templateExists(tmpl) {
-						return nil // Found one!
-					}
-				}
-
-				// Execute action
-				subBuilder := &ActionBuilder{
-					bot: ab.bot,
-					ctx: ab.ctx,
-				}
-				action(subBuilder)
-				if err := subBuilder.Execute(); err != nil {
-					return fmt.Errorf("loop iteration %d failed: %w", attempt+1, err)
-				}
-
-				attempt++
-				time.Sleep(100 * time.Millisecond)
-			}
-		},
-	}
-	ab.steps = append(ab.steps, step)
-	return ab
-}
-
 // UntilAnyTemplateRun loops until any of the specified templates appears, using a pre-built ActionBuilder
-func (ab *ActionBuilder) UntilAnyTemplateRun(templates []cv.Template, actions *ActionBuilder, maxAttempts int) *ActionBuilder {
+func (ab *ActionBuilder) UntilAnyTemplate(templates []cv.Template, actions *ActionBuilder, maxAttempts int) *ActionBuilder {
 	step := Step{
 		name: fmt.Sprintf("UntilAnyTemplate(%d templates)", len(templates)),
 		execute: func() error {
@@ -254,43 +216,6 @@ func (ab *ActionBuilder) UntilAnyTemplateRun(templates []cv.Template, actions *A
 					ctx:   ab.ctx,
 					steps: actions.steps,
 				}
-				if err := subBuilder.Execute(); err != nil {
-					return fmt.Errorf("loop iteration %d failed: %w", attempt+1, err)
-				}
-
-				attempt++
-				time.Sleep(100 * time.Millisecond)
-			}
-		},
-	}
-	ab.steps = append(ab.steps, step)
-	return ab
-}
-
-// WhileTemplateExists loops while a template exists
-func (ab *ActionBuilder) WhileTemplateExists(template cv.Template, action func(*ActionBuilder), maxAttempts int) *ActionBuilder {
-	step := Step{
-		name: fmt.Sprintf("WhileTemplateExists(%s)", template.Name),
-		execute: func() error {
-			attempt := 0
-			for {
-				if maxAttempts > 0 && attempt >= maxAttempts {
-					return fmt.Errorf("template still exists after %d attempts", maxAttempts)
-				}
-
-				ab.bot.CV().InvalidateCache()
-
-				// Exit if template no longer exists
-				if !ab.templateExists(template) {
-					return nil
-				}
-
-				// Execute action
-				subBuilder := &ActionBuilder{
-					bot: ab.bot,
-					ctx: ab.ctx,
-				}
-				action(subBuilder)
 				if err := subBuilder.Execute(); err != nil {
 					return fmt.Errorf("loop iteration %d failed: %w", attempt+1, err)
 				}
@@ -305,7 +230,7 @@ func (ab *ActionBuilder) WhileTemplateExists(template cv.Template, action func(*
 }
 
 // WhileTemplateExistsRun loops while a template exists, using a pre-built ActionBuilder
-func (ab *ActionBuilder) WhileTemplateExistsRun(template cv.Template, actions *ActionBuilder, maxAttempts int) *ActionBuilder {
+func (ab *ActionBuilder) WhileTemplateExists(template cv.Template, actions *ActionBuilder, maxAttempts int) *ActionBuilder {
 	step := Step{
 		name: fmt.Sprintf("WhileTemplateExists(%s)", template.Name),
 		execute: func() error {
@@ -341,14 +266,9 @@ func (ab *ActionBuilder) WhileTemplateExistsRun(template cv.Template, actions *A
 	return ab
 }
 
-// UntilTemplateDisappears loops until a template disappears
-func (ab *ActionBuilder) UntilTemplateDisappears(template cv.Template, action func(*ActionBuilder), maxAttempts int) *ActionBuilder {
-	return ab.WhileTemplateExists(template, action, maxAttempts)
-}
-
 // UntilTemplateDisappearsRun loops until a template disappears, using a pre-built ActionBuilder
-func (ab *ActionBuilder) UntilTemplateDisappearsRun(template cv.Template, actions *ActionBuilder, maxAttempts int) *ActionBuilder {
-	return ab.WhileTemplateExistsRun(template, actions, maxAttempts)
+func (ab *ActionBuilder) UntilTemplateDisappears(template cv.Template, actions *ActionBuilder, maxAttempts int) *ActionBuilder {
+	return ab.WhileTemplateExists(template, actions, maxAttempts)
 }
 
 // ============================================================================

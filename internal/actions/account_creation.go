@@ -51,7 +51,7 @@ func (l *Library) DoTutorial() error {
 
 	// Navigate to main menu to complete tutorial
 	err := l.Action().
-		UntilTemplateAppearsRun(templates.Main,
+		UntilTemplateAppears(templates.Main,
 			l.Action().
 				Click(192, 449).
 				Sleep(1*time.Second),
@@ -80,8 +80,9 @@ func (l *Library) enterBirthDate() error {
 		Sleep(3*time.Second).
 		Click(80, 375).
 		Sleep(3*time.Second).
-		UntilTemplateDisappears(templates.Month, func(ab *ActionBuilder) {
-			ab.Sleep(3*time.Second).
+		UntilTemplateDisappears(templates.Month,
+			l.Action().
+				Sleep(3*time.Second).
 				Click(142, 159).
 				Sleep(3*time.Second).
 				Click(80, 400).
@@ -89,8 +90,8 @@ func (l *Library) enterBirthDate() error {
 				Click(80, 375).
 				Sleep(3*time.Second).
 				Click(82, 422).
-				Sleep(3 * time.Second)
-		}, 45).
+				Sleep(3*time.Second),
+			45).
 		Execute()
 	if err != nil {
 		return err
@@ -102,8 +103,9 @@ func (l *Library) enterBirthDate() error {
 		Sleep(3*time.Second).
 		Click(200, 375).
 		Sleep(3*time.Second).
-		UntilTemplateDisappears(templates.Year, func(ab *ActionBuilder) {
-			ab.Sleep(3*time.Second).
+		UntilTemplateDisappears(templates.Year,
+			l.Action().
+				Sleep(3*time.Second).
 				Click(142, 159).
 				Sleep(3*time.Second).
 				Click(142, 159).
@@ -113,8 +115,8 @@ func (l *Library) enterBirthDate() error {
 				Click(200, 375).
 				Sleep(3*time.Second).
 				Click(142, 159).
-				Sleep(3 * time.Second)
-		}, 45).
+				Sleep(3*time.Second),
+			45).
 		Execute()
 	if err != nil {
 		return err
@@ -123,11 +125,11 @@ func (l *Library) enterBirthDate() error {
 	// Handle Country selection if needed
 	err = l.Action().
 		Sleep(3*time.Second).
-		IfTemplateExistsRun(templates.CountrySelect,
+		IfTemplateExists(templates.CountrySelect,
 			l.Action().
 				FindAndClickCenter(templates.CountrySelect2).
 				Sleep(500*time.Millisecond).
-				UntilTemplateAppearsRun(templates.Birth,
+				UntilTemplateAppears(templates.Birth,
 					l.Action().
 						Sleep(3*time.Second).
 						IfTemplateExistsClickPoint(templates.CountrySelect, 124, 250).
@@ -154,7 +156,7 @@ func (l *Library) enterBirthDate() error {
 func (l *Library) acceptTermsOfService() error {
 	// Wait for TOS screen and confirm birth
 	err := l.Action().
-		UntilTemplateAppearsRun(templates.TosScreen,
+		UntilTemplateAppears(templates.TosScreen,
 			l.Action().
 				Click(203, 371).
 				Sleep(1*time.Second),
@@ -166,12 +168,12 @@ func (l *Library) acceptTermsOfService() error {
 
 	// Open TOS then dismiss it
 	err = l.Action().
-		UntilTemplateAppearsRun(templates.Tos,
+		UntilTemplateAppears(templates.Tos,
 			l.Action().
 				Click(139, 299).
 				Sleep(1*time.Second),
 			45).
-		UntilTemplateAppearsRun(templates.TosScreen,
+		UntilTemplateAppears(templates.TosScreen,
 			l.Action().
 				Click(142, 486).
 				Sleep(1*time.Second),
@@ -183,12 +185,12 @@ func (l *Library) acceptTermsOfService() error {
 
 	// Open Privacy Policy then dismiss it
 	err = l.Action().
-		UntilTemplateAppearsRun(templates.Privacy,
+		UntilTemplateAppears(templates.Privacy,
 			l.Action().
 				Click(142, 339).
 				Sleep(1*time.Second),
 			45).
-		UntilTemplateAppearsRun(templates.TosScreen,
+		UntilTemplateAppears(templates.TosScreen,
 			l.Action().
 				Click(142, 486).
 				Sleep(1*time.Second),
@@ -216,7 +218,7 @@ func (l *Library) acceptTermsOfService() error {
 func (l *Library) createSaveData() error {
 	// Wait for Save screen and click create
 	err := l.Action().
-		UntilTemplateAppearsRun(templates.Save,
+		UntilTemplateAppears(templates.Save,
 			l.Action().
 				Click(145, 484).
 				Sleep(1*time.Second).
@@ -242,7 +244,7 @@ func (l *Library) createSaveData() error {
 
 	// Handle account linking flow
 	err = l.Action().
-		UntilTemplateAppearsRun(templates.Cinematic,
+		UntilTemplateAppears(templates.Cinematic,
 			l.Action().
 				Sleep(1*time.Second).
 				IfTemplateExistsClickPoint(templates.Link, 140, 460).
@@ -258,7 +260,7 @@ func (l *Library) createSaveData() error {
 func (l *Library) setupCharacterName() error {
 	// Click through welcome cutscene until name input
 	err := l.Action().
-		UntilTemplateAppearsRun(templates.Welcome,
+		UntilTemplateAppears(templates.Welcome,
 			l.Action().
 				Click(253, 506).
 				Sleep(110*time.Millisecond),
@@ -271,7 +273,7 @@ func (l *Library) setupCharacterName() error {
 	// TODO: waitfortemplate
 	// Wait for name input screen
 	err = l.Action().
-		UntilTemplateAppearsRun(templates.Name,
+		UntilTemplateAppears(templates.Name,
 			l.Action().
 				Sleep(1*time.Second),
 			45).
@@ -282,7 +284,7 @@ func (l *Library) setupCharacterName() error {
 
 	// Wait for OK button (keyboard open)
 	err = l.Action().
-		UntilTemplateAppearsRun(
+		UntilTemplateAppears(
 			templates.OK.InRegion(0, 476, 40, 502),
 			l.Action().
 				Click(139, 257).
@@ -297,22 +299,22 @@ func (l *Library) setupCharacterName() error {
 	// TODO: Get username from config or generate random
 	username := "TestUser123" // Placeholder
 	err = l.Action().
-		UntilTemplateAppears(templates.Return, func(ab *ActionBuilder) {
-			ab.Input(username).
-				Sleep(1*time.Second).
-				Click(185, 372). // Submit
-				Sleep(1 * time.Second).
-				// Handle rejection (clear and retry)
-				Do(func() error {
-					if !l.Action().TemplateExists(templates.Return) {
-						l.bot.ADB().Click(90, 370)
-						l.bot.ADB().Click(139, 254)
-						l.bot.ADB().Click(139, 254)
-						// TODO: Clear input field
-					}
-					return nil
-				})
-		}, 45).
+		UntilTemplateAppears(templates.Return, l.Action().
+			Input(username).
+			Sleep(1*time.Second).
+			Click(185, 372). // Submit
+			Sleep(1*time.Second).
+			// Handle rejection (clear and retry)
+			Do(func() error {
+				if !l.Action().TemplateExists(templates.Return) {
+					l.bot.ADB().Click(90, 370)
+					l.bot.ADB().Click(139, 254)
+					l.bot.ADB().Click(139, 254)
+					// TODO: Clear input field
+				}
+				return nil
+			}),
+			45).
 		Execute()
 	if err != nil {
 		return err
@@ -332,10 +334,11 @@ func (l *Library) setupCharacterName() error {
 func (l *Library) tutorialFirstPack() error {
 	// Wait for Pack to be ready
 	err := l.Action().
-		UntilTemplateAppears(templates.Pack, func(ab *ActionBuilder) {
-			ab.Click(140, 424).
-				Sleep(1 * time.Second)
-		}, 45).
+		UntilTemplateAppears(templates.Pack,
+			l.Action().
+				Click(140, 424).
+				Sleep(1*time.Second),
+			45).
 		Execute()
 	if err != nil {
 		return err
@@ -343,16 +346,15 @@ func (l *Library) tutorialFirstPack() error {
 
 	// Swipe to trace the pack
 	err = l.Action().
-		UntilTemplateDisappears(templates.Pack, func(ab *ActionBuilder) {
-			ab.Swipe(adb.SwipeParams{
+		UntilTemplateDisappears(templates.Pack, l.Action().
+			Swipe(adb.SwipeParams{
 				X1:       135,
 				Y1:       400,
 				X2:       135,
 				Y2:       200,
 				Duration: 100,
 			}).
-				Sleep(10 * time.Millisecond)
-		}, 45).
+			Sleep(10*time.Millisecond), 45).
 		Execute()
 	if err != nil {
 		return err
@@ -360,10 +362,8 @@ func (l *Library) tutorialFirstPack() error {
 
 	// Click through cards until Swipe indicator appears
 	err = l.Action().
-		UntilTemplateAppears(templates.Swipe, func(ab *ActionBuilder) {
-			ab.Click(140, 375).
-				Sleep(1 * time.Second)
-		}, 45).
+		UntilTemplateAppears(templates.Swipe, l.Action().Click(140, 375).
+			Sleep(1*time.Second), 45).
 		Execute()
 	if err != nil {
 		return err
@@ -371,12 +371,10 @@ func (l *Library) tutorialFirstPack() error {
 
 	// Swipe up through remaining cards
 	err = l.Action().
-		UntilTemplateDisappears(templates.SwipeUp, func(ab *ActionBuilder) {
-			ab.Swipe(adb.SwipeParams{X1: 266, Y1: 770, X2: 266, Y2: 355, Duration: 60}).
-				Sleep(10*time.Millisecond).
-				Click(41, 339).
-				Sleep(1 * time.Second)
-		}, 45).
+		UntilTemplateDisappears(templates.SwipeUp, l.Action().Swipe(adb.SwipeParams{X1: 266, Y1: 770, X2: 266, Y2: 355, Duration: 60}).
+			Sleep(10*time.Millisecond).
+			Click(41, 339).
+			Sleep(1*time.Second), 45).
 		Execute()
 	if err != nil {
 		return err
@@ -385,20 +383,16 @@ func (l *Library) tutorialFirstPack() error {
 	// Complete pack opening flow
 	err = l.Action().
 		Sleep(1*time.Second).
-		UntilTemplateAppears(templates.Move, func(ab *ActionBuilder) {
-			ab.Click(134, 375).
-				Sleep(1 * time.Second)
-		}, 45).
+		UntilTemplateAppears(templates.Move, l.Action().Click(134, 375).
+			Sleep(1*time.Second), 45).
 		Execute()
 	if err != nil {
 		return err
 	}
 
 	err = l.Action().
-		UntilTemplateAppears(templates.Proceed, func(ab *ActionBuilder) {
-			ab.Click(141, 483).
-				Sleep(1 * time.Second)
-		}, 45).
+		UntilTemplateAppears(templates.Proceed, l.Action().Click(141, 483).
+			Sleep(1*time.Second), 45).
 		Execute()
 	if err != nil {
 		return err
@@ -472,10 +466,8 @@ func (l *Library) tutorialSecondPack() error {
 
 	// Wait for Pack and click Skip
 	err = l.Action().
-		UntilTemplateAppears(templates.Pack, func(ab *ActionBuilder) {
-			ab.Click(239, 497).
-				Sleep(1 * time.Second)
-		}, 45).
+		UntilTemplateAppears(templates.Pack, l.Action().Click(239, 497).
+			Sleep(1*time.Second), 45).
 		Execute()
 	if err != nil {
 		return err
@@ -483,18 +475,16 @@ func (l *Library) tutorialSecondPack() error {
 
 	// Swipe to trace pack
 	err = l.Action().
-		UntilTemplateDisappears(templates.Pack, func(ab *ActionBuilder) {
-			ab.Swipe(adb.SwipeParams{
-				X1:       135,
-				Y1:       400,
-				X2:       135,
-				Y2:       200,
-				Duration: 100,
-			}).
-				Sleep(10*time.Millisecond).
-				Click(41, 339).
-				Sleep(1 * time.Second)
-		}, 45).
+		UntilTemplateDisappears(templates.Pack, l.Action().Swipe(adb.SwipeParams{
+			X1:       135,
+			Y1:       400,
+			X2:       135,
+			Y2:       200,
+			Duration: 100,
+		}).
+			Sleep(10*time.Millisecond).
+			Click(41, 339).
+			Sleep(1*time.Second), 45).
 		Execute()
 	if err != nil {
 		return err
@@ -502,10 +492,8 @@ func (l *Library) tutorialSecondPack() error {
 
 	// Skip through cards until Opening screen
 	err = l.Action().
-		UntilTemplateAppears(templates.Opening, func(ab *ActionBuilder) {
-			ab.Click(239, 497).
-				Sleep(50 * time.Millisecond)
-		}, 45).
+		UntilTemplateAppears(templates.Opening, l.Action().Click(239, 497).
+			Sleep(50*time.Millisecond), 45).
 		Execute()
 	if err != nil {
 		return err
@@ -513,10 +501,8 @@ func (l *Library) tutorialSecondPack() error {
 
 	// Click until Skip button appears
 	err = l.Action().
-		UntilTemplateAppears(templates.Skip, func(ab *ActionBuilder) {
-			ab.Click(146, 496).
-				Sleep(1 * time.Second)
-		}, 45).
+		UntilTemplateAppears(templates.Skip, l.Action().Click(146, 496).
+			Sleep(1*time.Second), 45).
 		Execute()
 	if err != nil {
 		return err
@@ -524,10 +510,8 @@ func (l *Library) tutorialSecondPack() error {
 
 	// Click Next buttons
 	err = l.Action().
-		UntilTemplateAppears(templates.Next, func(ab *ActionBuilder) {
-			ab.Click(239, 497).
-				Sleep(1 * time.Second)
-		}, 45).
+		UntilTemplateAppears(templates.Next, l.Action().Click(239, 497).
+			Sleep(1*time.Second), 45).
 		Execute()
 	if err != nil {
 		return err
@@ -535,10 +519,8 @@ func (l *Library) tutorialSecondPack() error {
 
 	// Navigate to Wonder Pick tutorial
 	err = l.Action().
-		UntilTemplateAppears(templates.Wonder, func(ab *ActionBuilder) {
-			ab.Click(146, 494).
-				Sleep(1 * time.Second)
-		}, 45).
+		UntilTemplateAppears(templates.Wonder, l.Action().Click(146, 494).
+			Sleep(1*time.Second), 45).
 		Execute()
 	if err != nil {
 		return err
@@ -555,10 +537,8 @@ func (l *Library) tutorialSecondPack() error {
 func (l *Library) tutorialWonderPick() error {
 	// Navigate to main menu
 	err := l.Action().
-		UntilTemplateAppears(templates.Shop, func(ab *ActionBuilder) {
-			ab.Click(146, 444).
-				Sleep(1 * time.Second)
-		}, 45).
+		UntilTemplateAppears(templates.Shop, l.Action().Click(146, 444).
+			Sleep(1*time.Second), 45).
 		Execute()
 	if err != nil {
 		return err
@@ -566,10 +546,8 @@ func (l *Library) tutorialWonderPick() error {
 
 	// Click Wonder2 icon
 	err = l.Action().
-		UntilTemplateAppears(templates.Wonder2, func(ab *ActionBuilder) {
-			ab.Click(79, 411).
-				Sleep(1 * time.Second)
-		}, 45).
+		UntilTemplateAppears(templates.Wonder2, l.Action().Click(79, 411).
+			Sleep(1*time.Second), 45).
 		Execute()
 	if err != nil {
 		return err
@@ -577,10 +555,11 @@ func (l *Library) tutorialWonderPick() error {
 
 	// Click Wonder3
 	err = l.Action().
-		UntilTemplateAppears(templates.Wonder3, func(ab *ActionBuilder) {
-			ab.Click(190, 437).
-				Sleep(1 * time.Second)
-		}, 45).
+		UntilTemplateAppears(templates.Wonder3,
+			l.Action().
+				Click(190, 437).
+				Sleep(1*time.Second),
+			45).
 		Execute()
 	if err != nil {
 		return err
@@ -589,10 +568,8 @@ func (l *Library) tutorialWonderPick() error {
 	// Confirm Wonder Pick selection
 	err = l.Action().
 		Sleep(2*time.Second).
-		UntilTemplateAppears(templates.Wonder4, func(ab *ActionBuilder) {
-			ab.Click(202, 347).
-				Sleep(500 * time.Millisecond)
-		}, 45).
+		UntilTemplateAppears(templates.Wonder4, l.Action().Click(202, 347).
+			Sleep(500*time.Millisecond), 45).
 		Execute()
 	if err != nil {
 		return err
@@ -610,10 +587,9 @@ func (l *Library) tutorialWonderPick() error {
 
 	// Wait for Pick screen
 	err = l.Action().
-		UntilTemplateAppears(templates.Pick, func(ab *ActionBuilder) {
-			ab.Click(208, 461).
-				Sleep(350 * time.Millisecond)
-		}, 45).
+		UntilTemplateAppears(templates.Pick, l.Action().Click(208, 461).
+			Sleep(350*time.Millisecond),
+			45).
 		Execute()
 	if err != nil {
 		return err
@@ -631,27 +607,26 @@ func (l *Library) tutorialWonderPick() error {
 
 	// Click through results until Welcome screen
 	err = l.Action().
-		UntilTemplateAppears(templates.Welcome, func(ab *ActionBuilder) {
-			ab.Sleep(1*time.Second).
-				IfTemplateExistsClick(templates.Skip).
-				IfTemplateExistsClickPoint(templates.Next, 146, 494).
-				IfTemplateExistsClickPoint(templates.Next2, 146, 494).
-				Do(func() error {
-					// Fallback clicks if no templates found
-					if !l.Action().TemplateExists(templates.Skip) &&
-						!l.Action().TemplateExists(templates.Next) &&
-						!l.Action().TemplateExists(templates.Next2) &&
-						!l.Action().TemplateExists(templates.Welcome) {
-						l.bot.ADB().Click(187, 345)
-						time.Sleep(1 * time.Second)
-						l.bot.ADB().Click(143, 492)
-						time.Sleep(1 * time.Second)
-						l.bot.ADB().Click(143, 492)
-						time.Sleep(1 * time.Second)
-					}
-					return nil
-				})
-		}, 45).
+		UntilTemplateAppears(templates.Welcome, l.Action().Sleep(1*time.Second).
+			IfTemplateExistsClick(templates.Skip).
+			IfTemplateExistsClickPoint(templates.Next, 146, 494).
+			IfTemplateExistsClickPoint(templates.Next2, 146, 494).
+			Do(func() error {
+				// Fallback clicks if no templates found
+				if !l.Action().TemplateExists(templates.Skip) &&
+					!l.Action().TemplateExists(templates.Next) &&
+					!l.Action().TemplateExists(templates.Next2) &&
+					!l.Action().TemplateExists(templates.Welcome) {
+					l.bot.ADB().Click(187, 345)
+					time.Sleep(1 * time.Second)
+					l.bot.ADB().Click(143, 492)
+					time.Sleep(1 * time.Second)
+					l.bot.ADB().Click(143, 492)
+					time.Sleep(1 * time.Second)
+				}
+				return nil
+			}),
+			45).
 		Execute()
 
 	return err

@@ -98,6 +98,6 @@ func (ab *ActionBuilder) Steps(fn func(*ActionBuilder)) *ActionBuilder {
 // WithSteps is an alias for Until that reads more naturally when you want to repeat a sequence
 // Usage: l.Action().WithSteps(templates.Shop, func(ab) { ... }, 45)
 // This is just syntactic sugar over Until/UntilTemplateAppears
-func (ab *ActionBuilder) WithSteps(template cv.Template, steps func(*ActionBuilder), maxAttempts int) *ActionBuilder {
+func (ab *ActionBuilder) WithSteps(template cv.Template, steps *ActionBuilder, maxAttempts int) *ActionBuilder {
 	return ab.UntilTemplateAppears(template, steps, maxAttempts)
 }
