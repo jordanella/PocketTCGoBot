@@ -150,7 +150,9 @@ func (t *DatabaseCollectionTab) refresh() {
 
 	collection, err := t.getFilteredCollection(accountID)
 	if err != nil {
-		if t.controller.window != nil { dialog.ShowError(err, t.controller.window) }
+		if t.controller.window != nil {
+			dialog.ShowError(err, t.controller.window)
+		}
 		return
 	}
 
@@ -284,7 +286,9 @@ func (t *DatabaseCollectionTab) showCollectionStats() {
 
 	collection, err := t.db.GetAccountCollection(accountID)
 	if err != nil {
-		if t.controller.window != nil { dialog.ShowError(err, t.controller.window) }
+		if t.controller.window != nil {
+			dialog.ShowError(err, t.controller.window)
+		}
 		return
 	}
 
@@ -330,7 +334,7 @@ Rarity Breakdown:
 
 	// Calculate completion percentage (if we had a master card list)
 	// For now, just show what we have
-	statsText += fmt.Sprintf("\nCollection Value:\n")
+	statsText += "\nCollection Value:\n"
 	statsText += fmt.Sprintf("  Average cards per unique: %.1f\n", float64(totalCards)/float64(totalUnique))
 
 	// Create dialog with scrollable content

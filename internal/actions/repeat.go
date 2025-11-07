@@ -9,6 +9,30 @@ type Repeat struct {
 	Actions    []ActionStep `yaml:"actions"`
 }
 
+// UnmarshalYAML implements custom unmarshaling for Repeat to handle polymorphic Actions field
+func (a *Repeat) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var raw map[string]interface{}
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+
+	// Extract fields
+	if val, ok := raw["iterations"].(int); ok {
+		a.Iterations = val
+	}
+
+	// Handle the nested actions
+	if actionsRaw, ok := raw["actions"]; ok && actionsRaw != nil {
+		unmarshaledActions, err := unmarshalNestedActions(actionsRaw)
+		if err != nil {
+			return err
+		}
+		a.Actions = unmarshaledActions
+	}
+
+	return nil
+}
+
 func (a *Repeat) Validate(ab *ActionBuilder) error {
 	if a.Iterations <= 0 {
 		return fmt.Errorf("iterations must be greater than 0")

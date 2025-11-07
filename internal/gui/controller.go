@@ -29,13 +29,14 @@ type Controller struct {
 	mumuInstancesMu sync.RWMutex
 
 	// GUI components
-	dashboard  *DashboardTab
-	configTab  *ConfigTab
-	logTab     *LogTab
-	accountTab *AccountTab
-	resultsTab *ResultsTab
-	controlTab *ControlTab
-	adbTestTab *ADBTestTab
+	dashboard   *DashboardTab
+	configTab   *ConfigTab
+	logTab      *LogTab
+	accountTab  *AccountTab
+	resultsTab  *ResultsTab
+	controlTab  *ControlTab
+	adbTestTab  *ADBTestTab
+	routinesTab *RoutinesTab
 
 	// Database tabs
 	db              *database.DB
@@ -80,6 +81,7 @@ func NewController(cfg *bot.Config, app fyne.App, window fyne.Window) *Controlle
 	ctrl.resultsTab = NewResultsTab(ctrl)
 	ctrl.controlTab = NewControlTab(ctrl)
 	ctrl.adbTestTab = NewADBTestTab(ctrl)
+	ctrl.routinesTab = NewRoutinesTab(ctrl)
 
 	// Initialize database after log tab is ready
 	ctrl.initializeDatabase()
@@ -149,7 +151,8 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 		widget.NewButton("Results", func() { c.switchTab(4) }),
 		widget.NewButton("Controls", func() { c.switchTab(5) }),
 		widget.NewButton("ADB Test", func() { c.switchTab(6) }),
-		widget.NewButton("Database", func() { c.switchTab(7) }),
+		widget.NewButton("Routines", func() { c.switchTab(7) }),
+		widget.NewButton("Database", func() { c.switchTab(8) }),
 	)
 
 	// Create database tab with nested tabs (after database tabs are initialized)
@@ -164,6 +167,7 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 		c.resultsTab.Build(),
 		c.controlTab.Build(),
 		c.adbTestTab.Build(),
+		c.routinesTab.Build(),
 		c.dbTabContainer,
 	)
 
@@ -233,10 +237,8 @@ func (c *Controller) showTab(tabIndex int, contentArea *fyne.Container) {
 	}
 
 	// Hide all tabs
-	for i := 0; i < 8; i++ {
-		if i < len(contentArea.Objects) {
-			contentArea.Objects[i].Hide()
-		}
+	for i := 0; i < len(contentArea.Objects); i++ {
+		contentArea.Objects[i].Hide()
 	}
 
 	// Show selected tab

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 
 	"gopkg.in/yaml.v3"
+	"jordanella.com/pocket-tcg-go/internal/cv"
 )
 
 // Routine holds the entire routine definition from the YAML file
@@ -18,20 +20,37 @@ type Routine struct {
 // This is required because 'steps' is a list of interfaces (ActionStep),
 // and YAML doesn't know which concrete struct to use without help.
 func (r *Routine) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	// A temporary struct to unmarshal everything except 'steps'
-	type routineAlias Routine
-	alias := routineAlias{}
-
-	// First, unmarshal the simple fields
-	if err := unmarshal(&alias); err != nil {
+	// Unmarshal into a raw map to handle the fields manually
+	var raw map[string]interface{}
+	if err := unmarshal(&raw); err != nil {
 		return err
 	}
-	r.RoutineName = alias.RoutineName
 
-	// Now, handle the 'steps' as a raw slice of map[string]interface{}
-	var rawSteps []map[string]interface{}
-	if err := unmarshal(&map[string]interface{}{"steps": &rawSteps}); err != nil {
-		return err
+	// Extract the routine_name
+	if name, ok := raw["routine_name"].(string); ok {
+		r.RoutineName = name
+	}
+
+	// Now, handle the 'steps' as a raw slice
+	stepsRaw, ok := raw["steps"]
+	if !ok || stepsRaw == nil {
+		// No steps is valid - just return
+		return nil
+	}
+
+	stepsSlice, ok := stepsRaw.([]interface{})
+	if !ok {
+		return fmt.Errorf("'steps' field must be a list")
+	}
+
+	// Convert each step to a map[string]interface{}
+	rawSteps := make([]map[string]interface{}, len(stepsSlice))
+	for i, step := range stepsSlice {
+		stepMap, ok := step.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("step %d: must be a map/object", i+1)
+		}
+		rawSteps[i] = stepMap
 	}
 
 	// Iterate through the raw steps and map them to concrete ActionStep types
@@ -43,7 +62,7 @@ func (r *Routine) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 
 		// Look up the concrete struct type in the registry
-		stepType, found := actionRegistry[actionType]
+		stepType, found := actionRegistry[strings.ToLower(actionType)]
 		if !found {
 			return fmt.Errorf("step %d: unknown action type '%s' (available types: %v)", i+1, actionType, getRegisteredActions())
 		}
@@ -73,6 +92,113 @@ func getRegisteredActions() []string {
 		actions = append(actions, name)
 	}
 	return actions
+}
+
+// unmarshalActionWithNestedSteps is a generic helper for unmarshaling actions that contain nested ActionStep slices
+// This handles the polymorphic unmarshaling of the nested actions field
+func unmarshalActionWithNestedSteps(unmarshal func(interface{}) error, maxAttempts *int, template *string, threshold **float64, region **cv.Region, actions *[]ActionStep) error {
+	// Unmarshal into a raw map to handle the fields manually
+	var raw map[string]interface{}
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+
+	// Extract fields
+	if val, ok := raw["max_attempts"].(int); ok {
+		*maxAttempts = val
+	}
+	if val, ok := raw["template"].(string); ok {
+		*template = val
+	}
+	if val, ok := raw["threshold"].(float64); ok {
+		f := val
+		*threshold = &f
+	}
+
+	// Handle region if present
+	if regionRaw, ok := raw["region"].(map[string]interface{}); ok {
+		var r cv.Region
+		if x1, ok := regionRaw["x1"].(int); ok {
+			r.X1 = x1
+		}
+		if y1, ok := regionRaw["y1"].(int); ok {
+			r.Y1 = y1
+		}
+		if x2, ok := regionRaw["x2"].(int); ok {
+			r.X2 = x2
+		}
+		if y2, ok := regionRaw["y2"].(int); ok {
+			r.Y2 = y2
+		}
+		*region = &r
+	}
+
+	// Handle the nested actions
+	actionsRaw, ok := raw["actions"]
+	if !ok || actionsRaw == nil {
+		return nil
+	}
+
+	unmarshaledActions, err := unmarshalNestedActions(actionsRaw)
+	if err != nil {
+		return err
+	}
+	*actions = unmarshaledActions
+
+	return nil
+}
+
+// unmarshalNestedActions is a helper that unmarshals a polymorphic actions field
+func unmarshalNestedActions(actionsRaw interface{}) ([]ActionStep, error) {
+	if actionsRaw == nil {
+		return nil, nil
+	}
+
+	actionsSlice, ok := actionsRaw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("'actions' field must be a list")
+	}
+
+	// Convert each action to a map[string]interface{}
+	rawSteps := make([]map[string]interface{}, len(actionsSlice))
+	for i, step := range actionsSlice {
+		stepMap, ok := step.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("action %d: must be a map/object", i+1)
+		}
+		rawSteps[i] = stepMap
+	}
+
+	// Unmarshal each action
+	actions := make([]ActionStep, len(rawSteps))
+	for i, rawStep := range rawSteps {
+		actionType, ok := rawStep["action"].(string)
+		if !ok || actionType == "" {
+			return nil, fmt.Errorf("action %d: missing or invalid 'action' field", i+1)
+		}
+
+		// Look up the concrete struct type in the registry
+		stepType, found := actionRegistry[strings.ToLower(actionType)]
+		if !found {
+			return nil, fmt.Errorf("action %d: unknown action type '%s' (available types: %v)", i+1, actionType, getRegisteredActions())
+		}
+
+		// Create an instance of the concrete type (which implements ActionStep)
+		action := reflect.New(stepType).Interface().(ActionStep)
+
+		// Marshal the raw map back to YAML, then unmarshal it into the concrete struct
+		stepBytes, err := yaml.Marshal(rawStep)
+		if err != nil {
+			return nil, fmt.Errorf("action %d (%s): error marshaling raw step: %w", i+1, actionType, err)
+		}
+		if err := yaml.Unmarshal(stepBytes, action); err != nil {
+			return nil, fmt.Errorf("action %d (%s): error unmarshaling into %T: %w", i+1, actionType, action, err)
+		}
+
+		actions[i] = action
+	}
+
+	return actions, nil
 }
 
 // NewActionBuilderFromRoutine loads a YAML file, unmarshals the Routine,

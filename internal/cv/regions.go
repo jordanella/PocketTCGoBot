@@ -4,11 +4,15 @@ import "image"
 
 // Image region types
 type Region struct {
-	X1, Y1, X2, Y2 int
+	X1 int `yaml:"x1"`
+	Y1 int `yaml:"y1"`
+	X2 int `yaml:"x2"`
+	Y2 int `yaml:"y2"`
 }
 
 type Point struct {
-	X, Y int
+	X int `yaml:"x"`
+	Y int `yaml:"y"`
 }
 
 // Helper functions

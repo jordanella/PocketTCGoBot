@@ -5,13 +5,45 @@ import (
 	"time"
 )
 
-type UntilAnyFound struct {
+type UntilAnyImagesFound struct {
 	Templates   []string     `yaml:"templates"`
 	MaxAttempts int          `yaml:"max_attempts"`
 	Actions     []ActionStep `yaml:"actions"`
 }
 
-func (a *UntilAnyFound) Validate(ab *ActionBuilder) error {
+// UnmarshalYAML implements custom unmarshaling for UntilAnyImagesFound to handle polymorphic Actions field
+func (a *UntilAnyImagesFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var raw map[string]interface{}
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+
+	// Extract fields
+	if val, ok := raw["max_attempts"].(int); ok {
+		a.MaxAttempts = val
+	}
+	if temps, ok := raw["templates"].([]interface{}); ok {
+		a.Templates = make([]string, len(temps))
+		for i, t := range temps {
+			if str, ok := t.(string); ok {
+				a.Templates[i] = str
+			}
+		}
+	}
+
+	// Handle the nested actions
+	if actionsRaw, ok := raw["actions"]; ok && actionsRaw != nil {
+		unmarshaledActions, err := unmarshalNestedActions(actionsRaw)
+		if err != nil {
+			return err
+		}
+		a.Actions = unmarshaledActions
+	}
+
+	return nil
+}
+
+func (a *UntilAnyImagesFound) Validate(ab *ActionBuilder) error {
 	if a.MaxAttempts < 0 {
 		return fmt.Errorf("max_attempts must be non-negative")
 	}
@@ -38,16 +70,16 @@ func (a *UntilAnyFound) Validate(ab *ActionBuilder) error {
 	// Validate nested actions with better error context
 	for i, action := range a.Actions {
 		if err := action.Validate(ab); err != nil {
-			return fmt.Errorf("UntilAnyFound (%s) -> nested action %d: %w", a.Templates, i+1, err)
+			return fmt.Errorf("UntilAnyImagesFound (%s) -> nested action %d: %w", a.Templates, i+1, err)
 		}
 	}
 
 	return nil
 }
 
-func (a *UntilAnyFound) Build(ab *ActionBuilder) *ActionBuilder {
+func (a *UntilAnyImagesFound) Build(ab *ActionBuilder) *ActionBuilder {
 	step := Step{
-		name: fmt.Sprintf("UntilAnyFound (%s)", a.Templates),
+		name: fmt.Sprintf("UntilAnyImagesFound (%s)", a.Templates),
 		execute: func(bot BotInterface) error {
 			// Build the nested actions into a concrete slice of executable steps
 			nestedSteps := ab.buildSteps(a.Actions)
@@ -70,7 +102,7 @@ func (a *UntilAnyFound) Build(ab *ActionBuilder) *ActionBuilder {
 					if err != nil {
 						return fmt.Errorf("error checking template %s existence: %w", template.Name, err)
 					}
-					if !result.Found {
+					if result.Found {
 						return nil
 					}
 				}

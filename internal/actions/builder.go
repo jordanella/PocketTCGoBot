@@ -9,6 +9,11 @@ import (
 	"jordanella.com/pocket-tcg-go/internal/monitor"
 )
 
+type ActionStep interface {
+	Validate(ab *ActionBuilder) error
+	Build(ab *ActionBuilder) *ActionBuilder
+}
+
 // ActionBuilder type and core methods
 type ActionBuilder struct {
 	steps              []Step

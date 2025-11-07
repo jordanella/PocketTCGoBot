@@ -7,7 +7,7 @@ import (
 	"jordanella.com/pocket-tcg-go/internal/cv"
 )
 
-type WhileImageFound struct {
+type UntilImageFound struct {
 	MaxAttempts int          `yaml:"max_attempts"`
 	Template    string       `yaml:"template"`            // Template lookup by name (required)
 	Threshold   *float64     `yaml:"threshold,omitempty"` // Optional: override template's threshold
@@ -15,12 +15,12 @@ type WhileImageFound struct {
 	Actions     []ActionStep `yaml:"actions"`
 }
 
-// UnmarshalYAML implements custom unmarshaling for WhileImageFound to handle polymorphic Actions field
-func (a *WhileImageFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+// UnmarshalYAML implements custom unmarshaling for UntilImageFound to handle polymorphic Actions field
+func (a *UntilImageFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return unmarshalActionWithNestedSteps(unmarshal, &a.MaxAttempts, &a.Template, &a.Threshold, &a.Region, &a.Actions)
 }
 
-func (a *WhileImageFound) Validate(ab *ActionBuilder) error {
+func (a *UntilImageFound) Validate(ab *ActionBuilder) error {
 	if a.MaxAttempts < 0 {
 		return fmt.Errorf("max_attempts must be non-negative")
 	}
@@ -44,17 +44,17 @@ func (a *WhileImageFound) Validate(ab *ActionBuilder) error {
 	// Validate nested actions with better error context
 	for i, action := range a.Actions {
 		if err := action.Validate(ab); err != nil {
-			return fmt.Errorf("WhileImageFound (%s) -> nested action %d: %w", a.Template, i+1, err)
+			return fmt.Errorf("UntilImageFound (%s) -> nested action %d: %w", a.Template, i+1, err)
 		}
 	}
 
 	return nil
 }
 
-func (a *WhileImageFound) Build(ab *ActionBuilder) *ActionBuilder {
+func (a *UntilImageFound) Build(ab *ActionBuilder) *ActionBuilder {
 
 	step := Step{
-		name: fmt.Sprintf("WhileImageFound (%s)", a.Template),
+		name: fmt.Sprintf("UntilImageFound (%s)", a.Template),
 		execute: func(bot BotInterface) error {
 			// Build the nested actions into a concrete slice of executable steps
 			nestedSteps := ab.buildSteps(a.Actions)
@@ -72,13 +72,11 @@ func (a *WhileImageFound) Build(ab *ActionBuilder) *ActionBuilder {
 
 				bot.CV().InvalidateCache()
 
-				// Exit if template no longer exists
-				// Use template name for registry cache lookup
 				result, err := bot.CV().FindTemplate(template.Name, config)
 				if err != nil {
 					return fmt.Errorf("error checking template %s existence: %w", template.Name, err)
 				}
-				if !result.Found {
+				if result.Found {
 					return nil
 				}
 

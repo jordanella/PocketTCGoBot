@@ -6,10 +6,10 @@ steps:
     x: 100
     y: 200
 
-  # Nested loop with WhileTemplateExists (using template registry lookup)
-  - action: WhileTemplateExists
+  # Nested loop with WhileImageFound (using template registry lookup)
+  - action: WhileImageFound
     max_attempts: 10
-    template_name: "OK"  # Look up template from registry by name
+    template: "OK"  # Look up template from registry by name
     actions:
       # These nested actions will be executed in each loop iteration
       - action: Click
@@ -26,9 +26,9 @@ steps:
     y: 250
 
   # Action-level overrides for threshold and region
-  - action: WhileTemplateExists
+  - action: WhileImageFound
     max_attempts: 5
-    template_name: "Main"  # Template from registry
+    template: "Main"  # Template from registry
     threshold: 0.95        # Optional: override template's threshold
     region:                # Optional: override template's search region
       x1: 100
@@ -42,9 +42,9 @@ steps:
         y: 300
 
       # Second level of nesting - a loop within a loop
-      - action: WhileTemplateExists
+      - action: WhileImageFound
         max_attempts: 3
-        template_name: "Confirm"  # Uses template's default threshold and region
+        template: "Confirm"  # Uses template's default threshold and region
         actions:
           # Deeply nested actions
           - action: Click

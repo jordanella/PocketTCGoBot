@@ -1,0 +1,66 @@
+package actions
+
+import (
+	"fmt"
+	"image"
+	"image/color"
+	_ "image/png"
+	"os"
+	"time"
+
+	"jordanella.com/pocket-tcg-go/internal/cv"
+)
+
+// CV-based action primitives
+
+// CheckColor verifies a pixel has expected color
+func (ab *ActionBuilder) CheckColor(x, y int, expected color.Color, tolerance uint8) *ActionBuilder {
+	step := Step{
+		name: fmt.Sprintf("CheckColor(%d, %d)", x, y),
+		execute: func() error {
+			matches, err := ab.bot.CV().CheckColor(x, y, expected, tolerance)
+			if err != nil {
+				return fmt.Errorf("failed to check color: %w", err)
+			}
+
+			if !matches {
+				return fmt.Errorf("color mismatch at (%d, %d)", x, y)
+			}
+
+			return nil
+		},
+	}
+	ab.steps = append(ab.steps, step)
+	return ab
+}
+
+// WaitForColor waits for a pixel to become a specific color
+func (ab *ActionBuilder) WaitForColor(x, y int, expected color.Color, tolerance uint8, timeout time.Duration) *ActionBuilder {
+	step := Step{
+		name: fmt.Sprintf("WaitForColor(%d, %d)", x, y),
+		execute: func() error {
+			start := time.Now()
+			for {
+				ab.bot.CV().InvalidateCache()
+
+				matches, err := ab.bot.CV().CheckColor(x, y, expected, tolerance)
+				if err != nil {
+					return fmt.Errorf("failed to check color: %w", err)
+				}
+
+				if matches {
+					return nil
+				}
+
+				if time.Since(start) > timeout {
+					return fmt.Errorf("color did not match within timeout")
+				}
+
+				time.Sleep(50 * time.Millisecond)
+			}
+		},
+		timeout: timeout,
+	}
+	ab.steps = append(ab.steps, step)
+	return ab
+}
