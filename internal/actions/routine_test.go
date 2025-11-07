@@ -457,6 +457,342 @@ steps:
 }
 
 
+// TestRunRoutineAction tests the RunRoutine action that invokes another routine
+func TestRunRoutineAction(t *testing.T) {
+	// Create a simple sub-routine to be called
+	subRoutineYAML := `routine_name: "Sub Routine"
+steps:
+  - action: Click
+    x: 500
+    y: 500
+  - action: Delay
+    count: 1
+`
+
+	// Create a main routine that calls the sub-routine
+	mainRoutineYAML := `routine_name: "Main Routine"
+steps:
+  - action: Click
+    x: 100
+    y: 100
+  - action: RunRoutine
+    routine: sub_routine
+  - action: Click
+    x: 200
+    y: 200
+`
+
+	tempDir := t.TempDir()
+
+	// Create routines subdirectory
+	routinesDir := filepath.Join(tempDir, "routines")
+	err := os.Mkdir(routinesDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create routines directory: %v", err)
+	}
+
+	// Write the sub-routine file
+	subRoutineFile := filepath.Join(routinesDir, "sub_routine.yaml")
+	err = os.WriteFile(subRoutineFile, []byte(subRoutineYAML), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write sub-routine file: %v", err)
+	}
+
+	// Write the main routine file
+	mainRoutineFile := filepath.Join(tempDir, "main_routine.yaml")
+	err = os.WriteFile(mainRoutineFile, []byte(mainRoutineYAML), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write main routine file: %v", err)
+	}
+
+	// Load the main routine
+	loader := NewRoutineLoader()
+	actionBuilder, err := loader.LoadFromFile(mainRoutineFile)
+	if err != nil {
+		t.Fatalf("Failed to load main routine: %v", err)
+	}
+
+	// Should have 3 steps: Click, RunRoutine, Click
+	if len(actionBuilder.steps) != 3 {
+		t.Errorf("Expected 3 steps, got %d", len(actionBuilder.steps))
+	}
+
+	// Verify the middle step is a RunRoutine action
+	if !contains(actionBuilder.steps[1].name, "RunRoutine") {
+		t.Errorf("Expected second step to be RunRoutine, got '%s'", actionBuilder.steps[1].name)
+	}
+
+	t.Log("Successfully loaded routine with RunRoutine action")
+}
+
+// TestRunRoutineWithMissingFile tests error handling when routine file doesn't exist
+func TestRunRoutineWithMissingFile(t *testing.T) {
+	mainRoutineYAML := `routine_name: "Main Routine"
+steps:
+  - action: RunRoutine
+    routine: non_existent_routine
+`
+
+	tempDir := t.TempDir()
+	mainRoutineFile := filepath.Join(tempDir, "main_routine.yaml")
+	err := os.WriteFile(mainRoutineFile, []byte(mainRoutineYAML), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write main routine file: %v", err)
+	}
+
+	// Load the main routine (this should succeed - validation happens at runtime)
+	loader := NewRoutineLoader()
+	actionBuilder, err := loader.LoadFromFile(mainRoutineFile)
+	if err != nil {
+		t.Fatalf("Failed to load main routine: %v", err)
+	}
+
+	// The routine should load successfully - the error will occur at execution time
+	if len(actionBuilder.steps) != 1 {
+		t.Errorf("Expected 1 step, got %d", len(actionBuilder.steps))
+	}
+
+	t.Log("Successfully validated that RunRoutine loads without requiring file existence at build time")
+}
+
+// TestRoutineRegistry tests the routine registry functionality
+func TestRoutineRegistry(t *testing.T) {
+	tempDir := t.TempDir()
+	routinesDir := filepath.Join(tempDir, "routines")
+	err := os.Mkdir(routinesDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create routines directory: %v", err)
+	}
+
+	// Create a test routine
+	testRoutineYAML := `routine_name: "Test Routine"
+steps:
+  - action: Click
+    x: 100
+    y: 100
+`
+	testRoutineFile := filepath.Join(routinesDir, "test_routine.yaml")
+	err = os.WriteFile(testRoutineFile, []byte(testRoutineYAML), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test routine: %v", err)
+	}
+
+	// Create registry (will load routines when WithTemplateRegistry is called)
+	registry := NewRoutineRegistry(routinesDir).WithTemplateRegistry(NewMockTemplateRegistry())
+
+	t.Run("Has() checks if routine exists", func(t *testing.T) {
+		if !registry.Has("test_routine") {
+			t.Error("Expected Has() to return true for existing routine")
+		}
+
+		if registry.Has("non_existent") {
+			t.Error("Expected Has() to return false for non-existent routine")
+		}
+	})
+
+	t.Run("Get() returns pre-loaded routine", func(t *testing.T) {
+		// Routine should already be loaded
+		builder, err := registry.Get("test_routine")
+		if err != nil {
+			t.Fatalf("Failed to get routine: %v", err)
+		}
+		if builder == nil {
+			t.Fatal("Expected non-nil builder")
+		}
+
+		// Multiple Get() calls should return same instance
+		builder2, err := registry.Get("test_routine")
+		if err != nil {
+			t.Fatalf("Failed to get routine again: %v", err)
+		}
+
+		if builder != builder2 {
+			t.Error("Expected Get() to return same instance")
+		}
+	})
+
+	t.Run("GetValidationError() returns nil for valid routine", func(t *testing.T) {
+		err := registry.GetValidationError("test_routine")
+		if err != nil {
+			t.Errorf("Expected no validation error, got: %v", err)
+		}
+	})
+
+	t.Run("ListValid() returns valid routines", func(t *testing.T) {
+		valid := registry.ListValid()
+		if len(valid) != 1 {
+			t.Errorf("Expected 1 valid routine, got %d", len(valid))
+		}
+
+		if len(valid) > 0 && valid[0] != "test_routine" {
+			t.Errorf("Expected 'test_routine', got '%s'", valid[0])
+		}
+	})
+
+	t.Run("ListInvalid() returns empty for all valid routines", func(t *testing.T) {
+		invalid := registry.ListInvalid()
+		if len(invalid) != 0 {
+			t.Errorf("Expected 0 invalid routines, got %d: %v", len(invalid), invalid)
+		}
+	})
+
+	t.Run("ListAvailable() returns discovered routines", func(t *testing.T) {
+		// Create additional routine files
+		routine2YAML := `routine_name: "Another Routine"
+steps:
+  - action: Click
+    x: 200
+    y: 200
+`
+		routine2File := filepath.Join(routinesDir, "another_routine.yaml")
+		err := os.WriteFile(routine2File, []byte(routine2YAML), 0644)
+		if err != nil {
+			t.Fatalf("Failed to write second routine: %v", err)
+		}
+
+		// Create a .yml file too
+		routine3YAML := `routine_name: "YML Routine"
+steps:
+  - action: Click
+    x: 300
+    y: 300
+`
+		routine3File := filepath.Join(routinesDir, "yml_routine.yml")
+		err = os.WriteFile(routine3File, []byte(routine3YAML), 0644)
+		if err != nil {
+			t.Fatalf("Failed to write yml routine: %v", err)
+		}
+
+		// Create a new registry to pick up the new files
+		registry2 := NewRoutineRegistry(routinesDir).WithTemplateRegistry(NewMockTemplateRegistry())
+		available := registry2.ListAvailable()
+
+		// Should have discovered all 3 routines
+		if len(available) != 3 {
+			t.Errorf("Expected 3 routines, got %d: %v", len(available), available)
+		}
+
+		// Check that all expected names are present
+		expectedNames := map[string]bool{
+			"test_routine":    false,
+			"another_routine": false,
+			"yml_routine":     false,
+		}
+
+		for _, name := range available {
+			if _, ok := expectedNames[name]; ok {
+				expectedNames[name] = true
+			}
+		}
+
+		for name, found := range expectedNames {
+			if !found {
+				t.Errorf("Expected to find routine '%s' in ListAvailable()", name)
+			}
+		}
+	})
+
+	t.Run("Invalid routine is tracked with error", func(t *testing.T) {
+		// Create an invalid routine
+		invalidYAML := `routine_name: "Invalid Routine"
+steps:
+  - action: NonExistentAction
+    foo: bar
+`
+		invalidFile := filepath.Join(routinesDir, "invalid.yaml")
+		err := os.WriteFile(invalidFile, []byte(invalidYAML), 0644)
+		if err != nil {
+			t.Fatalf("Failed to write invalid routine: %v", err)
+		}
+
+		// Create a new registry to pick up all files
+		registry3 := NewRoutineRegistry(routinesDir).WithTemplateRegistry(NewMockTemplateRegistry())
+
+		// Should have the invalid routine tracked
+		if !registry3.Has("invalid") {
+			t.Error("Expected Has() to return true for invalid routine")
+		}
+
+		// Should have validation error
+		validationErr := registry3.GetValidationError("invalid")
+		if validationErr == nil {
+			t.Error("Expected validation error for invalid routine")
+		}
+
+		// Get() should return the validation error
+		_, err = registry3.Get("invalid")
+		if err == nil {
+			t.Error("Expected Get() to return error for invalid routine")
+		}
+
+		// Should appear in ListInvalid()
+		invalid := registry3.ListInvalid()
+		found := false
+		for _, name := range invalid {
+			if name == "invalid" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("Expected 'invalid' in ListInvalid()")
+		}
+
+		// Should still appear in ListAvailable()
+		available := registry3.ListAvailable()
+		found = false
+		for _, name := range available {
+			if name == "invalid" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("Expected 'invalid' in ListAvailable()")
+		}
+	})
+}
+
+// TestRoutineRegistryWithTemplates tests registry integration with template registry
+func TestRoutineRegistryWithTemplates(t *testing.T) {
+	tempDir := t.TempDir()
+	routinesDir := filepath.Join(tempDir, "routines")
+	err := os.Mkdir(routinesDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create routines directory: %v", err)
+	}
+
+	// Create a routine that uses templates
+	routineYAML := `routine_name: "Template Routine"
+steps:
+  - action: WhileImageFound
+    template: "TestTemplate"
+    max_attempts: 5
+    actions:
+      - action: Click
+        x: 100
+        y: 100
+`
+	routineFile := filepath.Join(routinesDir, "template_routine.yaml")
+	err = os.WriteFile(routineFile, []byte(routineYAML), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write routine: %v", err)
+	}
+
+	// Create template registry
+	templateRegistry := NewMockTemplateRegistry()
+	templateRegistry.Add("TestTemplate", 0.9)
+
+	// Create routine registry with template registry
+	registry := NewRoutineRegistry(routinesDir).WithTemplateRegistry(templateRegistry)
+
+	// Should load successfully with valid template
+	_, err = registry.Get("template_routine")
+	if err != nil {
+		t.Errorf("Failed to load routine with valid template: %v", err)
+	}
+}
+
 // Helper function to check if a string contains a substring
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsHelper(s, substr))
@@ -475,6 +811,7 @@ func containsHelper(s, substr string) bool {
 type MockBot struct {
 	ctx       context.Context
 	templates TemplateRegistryInterface
+	routines  RoutineRegistryInterface
 }
 
 func NewMockBot(registry TemplateRegistryInterface) *MockBot {
@@ -484,12 +821,24 @@ func NewMockBot(registry TemplateRegistryInterface) *MockBot {
 	}
 }
 
+func NewMockBotWithRoutines(templates TemplateRegistryInterface, routines RoutineRegistryInterface) *MockBot {
+	return &MockBot{
+		ctx:       context.Background(),
+		templates: templates,
+		routines:  routines,
+	}
+}
+
 func (m *MockBot) Context() context.Context {
 	return m.ctx
 }
 
 func (m *MockBot) Templates() TemplateRegistryInterface {
 	return m.templates
+}
+
+func (m *MockBot) Routines() RoutineRegistryInterface {
+	return m.routines
 }
 
 func (m *MockBot) IsPaused() bool {

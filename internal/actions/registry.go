@@ -30,4 +30,5 @@ var actionRegistry = map[string]reflect.Type{
 	"ifanyimagesfound":     reflect.TypeOf(IfAnyImagesFound{}),
 	"ifallimagesfound":     reflect.TypeOf(IfAllImagesFound{}),
 	"ifnoimagesfound":      reflect.TypeOf(IfNoImagesFound{}),
+	"runroutine":           reflect.TypeOf(RunRoutine{}),
 }

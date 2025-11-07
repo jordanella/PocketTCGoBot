@@ -1,0 +1,27 @@
+routine_name: "Example Main Routine with RunRoutine"
+steps:
+  # Initial setup clicks
+  - action: Click
+    x: 100
+    y: 100
+
+  - action: Delay
+    count: 2
+
+  # Call a sub-routine by name
+  # This will look for routines/common_navigation.yaml
+  - action: RunRoutine
+    routine_name: common_navigation
+
+  # Continue with more actions after the routine completes
+  - action: Click
+    x: 200
+    y: 200
+
+  # You can also specify the full filename with extension
+  - action: RunRoutine
+    routine_name: example_routine.yaml
+
+  # Or use an absolute path if needed
+  # - action: RunRoutine
+  #   routine_name: C:/path/to/custom_routine.yaml

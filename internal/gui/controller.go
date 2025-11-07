@@ -29,14 +29,15 @@ type Controller struct {
 	mumuInstancesMu sync.RWMutex
 
 	// GUI components
-	dashboard   *DashboardTab
-	configTab   *ConfigTab
-	logTab      *LogTab
-	accountTab  *AccountTab
-	resultsTab  *ResultsTab
-	controlTab  *ControlTab
-	adbTestTab  *ADBTestTab
-	routinesTab *RoutinesTab
+	dashboard      *DashboardTab
+	configTab      *ConfigTab
+	logTab         *LogTab
+	accountTab     *AccountTab
+	resultsTab     *ResultsTab
+	controlTab     *ControlTab
+	adbTestTab     *ADBTestTab
+	routinesTab    *RoutinesTab
+	botLauncherTab *BotLauncherTab
 
 	// Database tabs
 	db              *database.DB
@@ -82,6 +83,7 @@ func NewController(cfg *bot.Config, app fyne.App, window fyne.Window) *Controlle
 	ctrl.controlTab = NewControlTab(ctrl)
 	ctrl.adbTestTab = NewADBTestTab(ctrl)
 	ctrl.routinesTab = NewRoutinesTab(ctrl)
+	ctrl.botLauncherTab = NewBotLauncherTab(ctrl)
 
 	// Initialize database after log tab is ready
 	ctrl.initializeDatabase()
@@ -145,14 +147,15 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 	// Create tab buttons (horizontal navigation)
 	tabButtons := container.NewHBox(
 		widget.NewButton("Dashboard", func() { c.switchTab(0) }),
-		widget.NewButton("Configuration", func() { c.switchTab(1) }),
-		widget.NewButton("Event Log", func() { c.switchTab(2) }),
-		widget.NewButton("Accounts", func() { c.switchTab(3) }),
-		widget.NewButton("Results", func() { c.switchTab(4) }),
-		widget.NewButton("Controls", func() { c.switchTab(5) }),
-		widget.NewButton("ADB Test", func() { c.switchTab(6) }),
-		widget.NewButton("Routines", func() { c.switchTab(7) }),
-		widget.NewButton("Database", func() { c.switchTab(8) }),
+		widget.NewButton("Bot Launcher", func() { c.switchTab(1) }),
+		widget.NewButton("Configuration", func() { c.switchTab(2) }),
+		widget.NewButton("Event Log", func() { c.switchTab(3) }),
+		widget.NewButton("Accounts", func() { c.switchTab(4) }),
+		widget.NewButton("Results", func() { c.switchTab(5) }),
+		widget.NewButton("Controls", func() { c.switchTab(6) }),
+		widget.NewButton("ADB Test", func() { c.switchTab(7) }),
+		widget.NewButton("Routines", func() { c.switchTab(8) }),
+		widget.NewButton("Database", func() { c.switchTab(9) }),
 	)
 
 	// Create database tab with nested tabs (after database tabs are initialized)
@@ -161,6 +164,7 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 	// Create content area (will switch based on selected tab)
 	c.contentArea = container.NewStack(
 		c.dashboard.Build(),
+		c.botLauncherTab.Build(),
 		c.configTab.Build(),
 		c.logTab.Build(),
 		c.accountTab.Build(),

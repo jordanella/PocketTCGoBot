@@ -29,6 +29,7 @@ type BotInterface interface {
 	ErrorMonitor() *monitor.ErrorMonitor
 	Config() ConfigInterface
 	Templates() TemplateRegistryInterface
+	Routines() RoutineRegistryInterface
 
 	// Context management
 	Context() context.Context
