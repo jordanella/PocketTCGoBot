@@ -1,0 +1,47 @@
+# Error Handling Routine Template (Sentry)
+# Copy this file and customize for detecting specific errors
+
+routine_name: "Error Detection Sentry"
+description: "Detects and handles specific error conditions"
+tags: ["error_handling", "sentry"]
+
+# NOTE: Sentry routines should:
+# - Return nil (no error) when everything is OK
+# - Return error (non-nil) when a problem is detected
+# - Use the Fail action to force an error return
+
+actions:
+  # Check for error condition
+  - action: If
+    condition_type: template_exists
+    template: error_indicator_template
+    actions:
+      # Log the error
+      - action: Comment
+        text: "Error detected: [describe error]"
+
+      # Attempt to handle/dismiss the error
+      - action: Click
+        template: error_dismiss_button
+
+      - action: Wait
+        duration: 1000
+
+      # Return error to trigger on_failure action
+      # This causes the sentry to report a problem
+      - action: Fail
+        message: "Error detected and handled: [describe error]"
+
+  # If no error found, routine returns nil (success)
+  # This triggers on_success action
+  - action: Comment
+    text: "No error detected"
+
+# When using this sentry in another routine:
+# sentries:
+#   - routine: error_handling/your_sentry_name
+#     frequency: 30              # Check every 30 seconds
+#     severity: medium           # Logging severity
+#     on_success: resume         # Continue when no error
+#     on_failure: pause          # Pause when error detected
+#                                # or use: resume, stop, force_stop
