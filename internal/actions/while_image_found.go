@@ -89,6 +89,10 @@ func (a *WhileImageFound) Build(ab *ActionBuilder) *ActionBuilder {
 
 				// Call the internal execution function with the bot
 				if err := subBuilder.executeSteps(bot.Context(), bot); err != nil {
+					// Check if this is a Break signal
+					if _, isBreak := err.(*BreakLoop); isBreak {
+						return nil // Break loop normally
+					}
 					return fmt.Errorf("loop iteration %d failed: %w", attempt+1, err)
 				}
 

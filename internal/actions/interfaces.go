@@ -31,6 +31,7 @@ type BotInterface interface {
 	Templates() TemplateRegistryInterface
 	Routines() RoutineRegistryInterface
 	RoutineController() RoutineControllerInterface
+	Variables() VariableStoreInterface
 
 	// Context management
 	Context() context.Context
@@ -75,4 +76,15 @@ type RoutineControllerInterface interface {
 	SetRunning()
 	SetCompleted()
 	SetIdle()
+}
+
+// VariableStoreInterface defines the interface for runtime variable storage
+// Variables are stored as strings and can be used in conditions and actions
+type VariableStoreInterface interface {
+	Set(name string, value string)
+	Get(name string) (string, bool)
+	Has(name string) bool
+	Delete(name string)
+	Clear()
+	GetAll() map[string]string
 }

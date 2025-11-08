@@ -31,4 +31,14 @@ var actionRegistry = map[string]reflect.Type{
 	"ifallimagesfound":     reflect.TypeOf(IfAllImagesFound{}),
 	"ifnoimagesfound":      reflect.TypeOf(IfNoImagesFound{}),
 	"runroutine":           reflect.TypeOf(RunRoutine{}),
+	// Generic control flow with conditions
+	"if":    reflect.TypeOf(If{}),
+	"while": reflect.TypeOf(While{}),
+	"until": reflect.TypeOf(Until{}),
+	"break": reflect.TypeOf(Break{}),
+	// Variable actions
+	"setvariable": reflect.TypeOf(SetVariable{}),
+	"getvariable": reflect.TypeOf(GetVariable{}),
+	"increment":   reflect.TypeOf(Increment{}),
+	"decrement":   reflect.TypeOf(Decrement{}),
 }

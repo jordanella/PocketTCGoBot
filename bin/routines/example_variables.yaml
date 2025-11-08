@@ -1,0 +1,163 @@
+routine_name: "Variable System Example"
+description: "Demonstrates variable actions and conditions"
+tags: ["example", "variables"]
+
+steps:
+  # Initialize a counter variable
+  - action: SetVariable
+    name: counter
+    value: "0"
+
+  # Set a target count
+  - action: SetVariable
+    name: target
+    value: "5"
+
+  # Simple counter loop using variables
+  - action: While
+    max_attempts: 20
+    condition:
+      type: VariableLessThan
+      variable: counter
+      value: "5"
+    actions:
+      - action: Click
+        x: 100
+        y: 100
+
+      - action: Increment
+        name: counter
+
+      - action: Delay
+        count: 1
+
+  # Example: Using variable equality
+  - action: If
+    condition:
+      type: VariableEquals
+      variable: counter
+      value: "5"
+    then:
+      - action: Click
+        x: 200
+        y: 200
+
+  # Example: Decrement
+  - action: Decrement
+    name: counter
+    amount: "2"
+
+  # Now counter should be 3
+  - action: If
+    condition:
+      type: VariableEquals
+      variable: counter
+      value: "3"
+    then:
+      - action: Click
+        x: 300
+        y: 300
+
+  # Example: Complex condition with variables
+  - action: SetVariable
+    name: mode
+    value: "farming"
+
+  - action: If
+    condition:
+      type: VariableEquals
+      variable: mode
+      value: "farming"
+    then:
+      - action: SetVariable
+        name: clicks
+        value: "0"
+
+      - action: Repeat
+        iterations: 10
+        actions:
+          - action: Click
+            x: 400
+            y: 400
+
+          - action: Increment
+            name: clicks
+
+          - action: Delay
+            count: 1
+
+  # Example: String operations
+  - action: SetVariable
+    name: status
+    value: "battle_ready"
+
+  - action: If
+    condition:
+      type: VariableStartsWith
+      variable: status
+      prefix: "battle"
+    then:
+      - action: Click
+        x: 500
+        y: 500
+
+  # Example: Contains check
+  - action: If
+    condition:
+      type: VariableContains
+      variable: status
+      substring: "ready"
+    then:
+      - action: Click
+        x: 600
+        y: 600
+
+  # Example: Numeric comparisons
+  - action: SetVariable
+    name: health
+    value: "75"
+
+  - action: If
+    condition:
+      type: VariableGreaterThan
+      variable: health
+      value: "50"
+    then:
+      - action: Click
+        x: 700
+        y: 700
+
+  # Example: Combined with logical operators
+  - action: SetVariable
+    name: energy
+    value: "100"
+
+  - action: If
+    condition:
+      type: All
+      conditions:
+        - type: VariableGreaterThan
+          variable: health
+          value: "50"
+        - type: VariableGreaterThanOrEqual
+          variable: energy
+          value: "100"
+    then:
+      - action: Click
+        x: 800
+        y: 800
+
+  # Example: NotEquals
+  - action: SetVariable
+    name: result
+    value: "success"
+
+  - action: If
+    condition:
+      type: VariableNotEquals
+      variable: result
+      value: "failure"
+    then:
+      - action: Click
+        x: 900
+        y: 900

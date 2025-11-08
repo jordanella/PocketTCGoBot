@@ -1,0 +1,121 @@
+routine_name: "Example Condition System"
+description: "Demonstrates the new flexible condition system with If, While, Until, and logical operators"
+tags: ["example", "conditions"]
+
+steps:
+  # Simple If with ImageExists condition
+  - action: If
+    condition:
+      type: ImageExists
+      template: "OK"
+    then:
+      - action: Click
+        x: 500
+        y: 300
+      - action: Delay
+        count: 1
+
+  # If with else branch
+  - action: If
+    condition:
+      type: ImageNotExists
+      template: "Error"
+    then:
+      - action: Click
+        x: 100
+        y: 100
+    else:
+      - action: Click
+        x: 200
+        y: 200
+
+  # While with complex All (AND) condition
+  - action: While
+    max_attempts: 10
+    condition:
+      type: All
+      conditions:
+        - type: ImageExists
+          template: "Enemy"
+        - type: Not
+          condition:
+            type: ImageExists
+            template: "Victory"
+    actions:
+      - action: Click
+        x: 500
+        y: 500
+      - action: Delay
+        count: 1
+
+  # Until with Any (OR) condition - wait for either Victory or Defeat
+  - action: Until
+    max_attempts: 20
+    condition:
+      type: Any
+      conditions:
+        - type: ImageExists
+          template: "Victory"
+        - type: ImageExists
+          template: "Defeat"
+    actions:
+      - action: Click
+        x: 400
+        y: 400
+      - action: Delay
+        count: 2
+
+  # None condition - wait until no enemies remain
+  - action: While
+    max_attempts: 15
+    condition:
+      type: None
+      conditions:
+        - type: ImageExists
+          template: "Enemy1"
+        - type: ImageExists
+          template: "Enemy2"
+        - type: ImageExists
+          template: "Enemy3"
+    actions:
+      - action: Click
+        x: 300
+        y: 300
+
+  # Nested conditions - complex logic
+  - action: If
+    condition:
+      type: Any
+      conditions:
+        - type: All
+          conditions:
+            - type: ImageExists
+              template: "Ready"
+            - type: ImageNotExists
+              template: "Busy"
+        - type: ImageExists
+          template: "ForceStart"
+    then:
+      - action: Click
+        x: 600
+        y: 600
+      - action: Delay
+        count: 3
+
+  # Nested control flow - While inside If
+  - action: If
+    condition:
+      type: ImageExists
+      template: "BattleMode"
+    then:
+      - action: While
+        max_attempts: 5
+        condition:
+          type: ImageExists
+          template: "Target"
+        actions:
+          - action: Click
+            x: 700
+            y: 700
+          - action: Delay
+            count: 1

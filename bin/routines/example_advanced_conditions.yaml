@@ -1,0 +1,221 @@
+routine_name: "Advanced Condition System Examples"
+description: "Demonstrates else-if chains, Break action, and complex condition patterns"
+tags: ["example", "conditions", "advanced"]
+
+steps:
+  # Example 1: Else-if chain for multiple outcomes
+  - action: If
+    condition:
+      type: ImageExists
+      template: "Victory"
+    then:
+      - action: Click
+        x: 500
+        y: 300
+
+  elseif:
+    # Check for defeat
+    - condition:
+        type: ImageExists
+        template: "Defeat"
+      then:
+        - action: Click
+          x: 600
+          y: 300
+
+    # Check for timeout
+    - condition:
+        type: ImageExists
+        template: "Timeout"
+      then:
+        - action: Click
+          x: 700
+          y: 300
+
+  else:
+    # Default case - keep waiting
+    - action: Delay
+      count: 1
+
+  # Example 2: Break with conditional exit
+  # Search for targets, but stop early if "Stop" button appears
+  - action: While
+    max_attempts: 20
+    condition:
+      type: ImageExists
+      template: "Target"
+    actions:
+      # Check if we should stop early
+      - action: If
+        condition:
+          type: ImageExists
+          template: "Stop"
+        then:
+          - action: Break
+
+      # Otherwise, click the target
+      - action: Click
+        template: "Target"
+
+      - action: Delay
+        count: 1
+
+  # Example 3: Complex nested conditions with else-if
+  # Determine battle state and act accordingly
+  - action: If
+    condition:
+      type: All
+      conditions:
+        - type: ImageExists
+          template: "BattleReady"
+        - type: ImageNotExists
+          template: "Busy"
+    then:
+      - action: Click
+        x: 100
+        y: 100
+
+  elseif:
+    - condition:
+        type: ImageExists
+        template: "Recharging"
+      then:
+        - action: Delay
+          count: 3
+
+    - condition:
+        type: ImageExists
+        template: "LowHealth"
+      then:
+        - action: Click
+          template: "Heal"
+
+  else:
+    - action: Click
+      x: 200
+      y: 200
+
+  # Example 4: Until with Break for early exit
+  # Keep trying until success, but break if error appears
+  - action: Until
+    max_attempts: 15
+    condition:
+      type: ImageExists
+      template: "Success"
+    actions:
+      # Check for error condition
+      - action: If
+        condition:
+          type: ImageExists
+          template: "Error"
+        then:
+          - action: Click
+            template: "OK"
+          - action: Break
+
+      # Normal retry action
+      - action: Click
+        x: 300
+        y: 300
+
+      - action: Delay
+        count: 2
+
+  # Example 5: Repeat with conditional break
+  # Try up to 10 times, but exit early on success
+  - action: Repeat
+    iterations: 10
+    actions:
+      - action: Click
+        x: 400
+        y: 400
+
+      - action: Delay
+        count: 1
+
+      # Break if we succeeded
+      - action: If
+        condition:
+          type: ImageExists
+          template: "Complete"
+        then:
+          - action: Break
+
+  # Example 6: Nested conditions with multiple else-ifs
+  # Complex decision tree
+  - action: If
+    condition:
+      type: ImageExists
+      template: "MenuOpen"
+    then:
+      # Nested if-elseif-else within the then branch
+      - action: If
+        condition:
+          type: ImageExists
+          template: "Option1"
+        then:
+          - action: Click
+            template: "Option1"
+
+        elseif:
+          - condition:
+              type: ImageExists
+              template: "Option2"
+            then:
+              - action: Click
+                template: "Option2"
+
+          - condition:
+              type: ImageExists
+              template: "Option3"
+            then:
+              - action: Click
+                template: "Option3"
+
+        else:
+          - action: Click
+            x: 500
+            y: 500
+
+  else:
+    # Menu is not open, try to open it
+    - action: Click
+      template: "MenuButton"
+
+  # Example 7: Multiple breaks in nested loops
+  # Outer loop with nested inner loop, both can break
+  - action: While
+    max_attempts: 5
+    condition:
+      type: ImageExists
+      template: "OuterCondition"
+    actions:
+      # Inner loop
+      - action: While
+        max_attempts: 3
+        condition:
+          type: ImageExists
+          template: "InnerCondition"
+        actions:
+          - action: Click
+            x: 100
+            y: 100
+
+          # Break inner loop if found
+          - action: If
+            condition:
+              type: ImageExists
+              template: "InnerTarget"
+            then:
+              - action: Break
+
+      # Check if we should break outer loop
+      - action: If
+        condition:
+          type: ImageExists
+          template: "OuterTarget"
+        then:
+          - action: Break
+
+      - action: Delay
+        count: 1
