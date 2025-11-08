@@ -40,7 +40,13 @@ func (c *ImageExists) Validate(ab *ActionBuilder) error {
 }
 
 func (c *ImageExists) Evaluate(bot BotInterface) (bool, error) {
-	template, config, err := buildTemplateConfiguration(bot, c.Template, c.Threshold, c.Region)
+	// Interpolate template name if it contains variables
+	templateName, err := InterpolateString(c.Template, bot)
+	if err != nil {
+		return false, fmt.Errorf("ImageExists: %w", err)
+	}
+
+	template, config, err := buildTemplateConfiguration(bot, templateName, c.Threshold, c.Region)
 	if err != nil {
 		return false, fmt.Errorf("ImageExists: failed to build template configuration: %w", err)
 	}
@@ -77,7 +83,13 @@ func (c *ImageNotExists) Validate(ab *ActionBuilder) error {
 }
 
 func (c *ImageNotExists) Evaluate(bot BotInterface) (bool, error) {
-	template, config, err := buildTemplateConfiguration(bot, c.Template, c.Threshold, c.Region)
+	// Interpolate template name if it contains variables
+	templateName, err := InterpolateString(c.Template, bot)
+	if err != nil {
+		return false, fmt.Errorf("ImageNotExists: %w", err)
+	}
+
+	template, config, err := buildTemplateConfiguration(bot, templateName, c.Threshold, c.Region)
 	if err != nil {
 		return false, fmt.Errorf("ImageNotExists: failed to build template configuration: %w", err)
 	}

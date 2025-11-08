@@ -394,16 +394,70 @@ The system handles type conversions automatically:
 
 See [example_variables.yaml](../bin/routines/example_variables.yaml) for comprehensive examples of all variable features.
 
+## Advanced Features
+
+### Variable Interpolation
+
+You can use `${variable_name}` syntax to reference variables in:
+
+- Template names in image-based actions
+- Values in SetVariable action
+- Values in variable conditions
+
+See [variable_interpolation.go](../internal/actions/variable_interpolation.go) for implementation details.
+
+Example:
+
+```yaml
+- action: SetVariable
+  name: button_type
+  value: "start"
+
+# Use variable in template name
+- action: ClickImage
+  template: ${button_type}_button  # Expands to "start_button"
+
+# Combine with other text
+- action: WaitForImage
+  template: ${button_type}_screen  # Expands to "start_screen"
+```
+
+### Config Definitions
+
+Define user-configurable parameters at the top of routines. These are automatically initialized as variables when the routine starts.
+
+See [CONFIG_SYSTEM.md](./CONFIG_SYSTEM.md) for complete documentation.
+
+Example:
+
+```yaml
+routine_name: "Configurable Routine"
+config:
+  - name: target_count
+    label: "Target Count"
+    type: number
+    default: "10"
+    min: 1
+    max: 100
+
+steps:
+  - action: While
+    condition:
+      type: VariableLessThan
+      variable: counter
+      value: ${target_count}  # Uses config value
+```
+
 ## Future Features
 
 Coming soon:
 
-- **Variable interpolation**: Use `${variable_name}` in action parameters
-- **Config definitions**: Define user-configurable variables in YAML
 - **Profile system**: Save/load variable presets
 - **Arithmetic actions**: Add, Subtract, Multiply, Divide
 - **String manipulation**: Concat, Substring, Replace
 - **Persistent variables**: Variables that survive routine executions
+- **Variable scopes**: Local vs global variables
+- **Array/list variables**: Store and manipulate collections
 
 ## Implementation Details
 

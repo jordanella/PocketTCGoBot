@@ -12,11 +12,12 @@ import (
 
 // Routine holds the entire routine definition from the YAML file
 type Routine struct {
-	RoutineName string       `yaml:"routine_name"`
-	Description string       `yaml:"description,omitempty"` // Optional description of the routine's purpose
-	Tags        []string     `yaml:"tags,omitempty"`        // Optional tags for organization (e.g., "sentry", "navigation", "combat")
-	Steps       []ActionStep `yaml:"steps"`                 // ActionStep is the interface you already defined
-	Sentries    []Sentry     `yaml:"sentries,omitempty"`    // Sentry definitions for error handling
+	RoutineName string        `yaml:"routine_name"`
+	Description string        `yaml:"description,omitempty"` // Optional description of the routine's purpose
+	Tags        []string      `yaml:"tags,omitempty"`        // Optional tags for organization (e.g., "sentry", "navigation", "combat")
+	Config      []ConfigParam `yaml:"config,omitempty"`      // Optional user-configurable parameters
+	Steps       []ActionStep  `yaml:"steps"`                 // ActionStep is the interface you already defined
+	Sentries    []Sentry      `yaml:"sentries,omitempty"`    // Sentry definitions for error handling
 }
 
 // Custom Unmarshaler for polymorphic actions (Steps)

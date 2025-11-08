@@ -80,7 +80,12 @@ func (a *SetVariable) Build(ab *ActionBuilder) *ActionBuilder {
 	step := Step{
 		name: fmt.Sprintf("SetVariable (%s = %s)", a.Name, a.Value),
 		execute: func(bot BotInterface) error {
-			bot.Variables().Set(a.Name, a.Value)
+			// Interpolate the value if it contains variables
+			value, err := InterpolateString(a.Value, bot)
+			if err != nil {
+				return fmt.Errorf("SetVariable: %w", err)
+			}
+			bot.Variables().Set(a.Name, value)
 			return nil
 		},
 		issue: a.Validate(ab),

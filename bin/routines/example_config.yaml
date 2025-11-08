@@ -1,0 +1,149 @@
+routine_name: "Configurable Farming Routine"
+description: "Demonstrates config definitions with variable interpolation"
+tags: ["example", "config", "variables"]
+
+# Config definitions: These create user-configurable parameters
+# that are initialized as variables when the routine starts
+config:
+  # Numeric config with min/max constraints
+  - name: target_count
+    label: "Target Count"
+    type: number
+    default: "10"
+    description: "Number of times to run the farming loop"
+    min: 1
+    max: 100
+
+  # Dropdown config for selecting farm type
+  - name: farm_type
+    label: "Farm Type"
+    type: dropdown
+    options: ["Gold", "Experience", "Materials"]
+    default: "Gold"
+    description: "Type of resource to farm"
+
+  # Checkbox config for enabling/disabling features
+  - name: enable_notifications
+    label: "Enable Notifications"
+    type: checkbox
+    default: "true"
+    description: "Show notifications when farming completes"
+
+  # Text config for custom template names
+  - name: start_button
+    label: "Start Button Template"
+    type: text
+    default: "battle_start"
+    description: "Template name for the start button"
+
+  # Numeric config for delays
+  - name: delay_seconds
+    label: "Delay Between Actions"
+    type: number
+    default: "2"
+    description: "Seconds to wait between farming iterations"
+    min: 0
+    max: 10
+
+steps:
+  # Initialize a counter variable
+  - action: SetVariable
+    name: counter
+    value: "0"
+
+  # Main farming loop using config variable
+  - action: While
+    max_attempts: 200
+    condition:
+      type: VariableLessThan
+      variable: counter
+      value: ${target_count}  # Uses config value
+    actions:
+      # Click start button using dynamic template name from config
+      - action: WaitForImage
+        template: ${start_button}  # Uses config value
+        max_attempts: 10
+
+      - action: ClickImage
+        template: ${start_button}
+
+      # Wait for farm type specific screen using interpolation
+      - action: WaitForImage
+        template: ${farm_type}_screen  # Combines config value with suffix
+        max_attempts: 20
+
+      # Click the farm type button
+      - action: ClickImage
+        template: ${farm_type}_button
+
+      # Delay using config value
+      - action: Delay
+        count: ${delay_seconds}
+
+      # Increment counter
+      - action: Increment
+        name: counter
+
+      # Log progress (example of string interpolation in future)
+      - action: SetVariable
+        name: progress_message
+        value: "Completed ${counter} of ${target_count}"
+
+  # Conditional notification based on config checkbox
+  - action: If
+    condition:
+      type: VariableEquals
+      variable: enable_notifications
+      value: "true"
+    then:
+      # In a real implementation, this would trigger a notification
+      - action: Click
+        x: 100
+        y: 100
+
+  # Example: Using config in complex conditions
+  - action: If
+    condition:
+      type: All
+      conditions:
+        - type: VariableEquals
+          variable: farm_type
+          value: "Gold"
+        - type: VariableGreaterThanOrEqual
+          variable: counter
+          value: ${target_count}
+    then:
+      - action: ClickImage
+        template: collect_gold
+
+  # Example: Different behavior based on dropdown selection
+  - action: If
+    condition:
+      type: VariableEquals
+      variable: farm_type
+      value: "Experience"
+    then:
+      - action: ClickImage
+        template: claim_exp_reward
+    elseif:
+      - condition:
+          type: VariableEquals
+          variable: farm_type
+          value: "Materials"
+        then:
+          - action: ClickImage
+            template: claim_material_reward
+    else:
+      - action: ClickImage
+        template: claim_gold_reward
+
+  # Example: Numeric comparison with config values
+  - action: If
+    condition:
+      type: VariableGreaterThan
+      variable: delay_seconds
+      value: "5"
+    then:
+      # Long delay, show waiting screen
+      - action: ClickImage
+        template: waiting_indicator

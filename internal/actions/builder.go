@@ -39,6 +39,27 @@ func (ab *ActionBuilder) WithTemplateRegistry(registry TemplateRegistryInterface
 	return ab
 }
 
+// InitializeConfigVariables initializes variables from config parameters with their defaults
+// This should be called before executing a routine to set up user-configurable variables
+func InitializeConfigVariables(bot BotInterface, config []ConfigParam, overrides map[string]string) error {
+	for _, param := range config {
+		// Get the value: override > default > type default
+		value := param.Default
+		if overrides != nil {
+			if override, ok := overrides[param.Name]; ok {
+				value = override
+			}
+		}
+		if value == "" {
+			value = param.GetTypeDefault()
+		}
+
+		// Set the variable
+		bot.Variables().Set(param.Name, value)
+	}
+	return nil
+}
+
 type Step struct {
 	name         string
 	execute      func(BotInterface) error // Bot is provided at execution time
