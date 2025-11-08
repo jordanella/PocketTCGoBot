@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -60,6 +61,9 @@ type BotLaunchConfig struct {
 	// Variable inspector
 	variablesAccordion *widget.Accordion
 	variablesLabel     *widget.Label
+	// Config editor
+	configBtn       *widget.Button
+	configOverrides map[string]string // User-configured parameter overrides
 }
 
 // NewBotLauncherTab creates a new bot launcher tab
@@ -309,15 +313,8 @@ func (t *BotLauncherTab) generateBotConfigs() {
 
 // createBotConfig creates a configuration object for a bot
 func (t *BotLauncherTab) createBotConfig(instance int) *BotLaunchConfig {
-	routineSelect := widget.NewSelect(t.availableRoutines, func(selected string) {
-		// Update the selected routine
-		for _, cfg := range t.botConfigs {
-			if cfg.instance == instance {
-				cfg.selectedRoutine = selected
-				break
-			}
-		}
-	})
+	// We'll set the callback after creating the config object
+	routineSelect := widget.NewSelect(t.availableRoutines, nil)
 
 	// Default to <none>
 	if len(t.availableRoutines) > 0 {
@@ -334,6 +331,7 @@ func (t *BotLauncherTab) createBotConfig(instance int) *BotLaunchConfig {
 		statusLabel:     widget.NewLabel("Ready"),
 		statusIndicator: statusIndicator,
 		selectedRoutine: "<none>",
+		configOverrides: make(map[string]string),
 	}
 
 	// Create individual control buttons (disabled initially)
@@ -357,6 +355,19 @@ func (t *BotLauncherTab) createBotConfig(instance int) *BotLaunchConfig {
 	})
 	config.restartBtn.Disable()
 
+	// Config button (enabled when routine selected)
+	config.configBtn = widget.NewButton("⚙ Config", func() {
+		t.showConfigEditor(config)
+	})
+	config.configBtn.Disable()
+
+	// Set the routine select callback now that config exists
+	routineSelect.OnChanged = func(selected string) {
+		config.selectedRoutine = selected
+		// Enable config button if routine has config parameters
+		t.updateConfigButtonState(config)
+	}
+
 	return config
 }
 
@@ -378,8 +389,8 @@ func (t *BotLauncherTab) createBotConfigCard(config *BotLaunchConfig) fyne.Canva
 		config.restartBtn,
 	)
 
-	// Routine selection row
-	routineRow := container.NewBorder(nil, nil, routineLabel, nil, config.routineSelect)
+	// Routine selection row with config button
+	routineRow := container.NewBorder(nil, nil, routineLabel, config.configBtn, config.routineSelect)
 
 	// Status row with indicator and label
 	statusRow := container.NewHBox(
@@ -802,15 +813,15 @@ func (t *BotLauncherTab) Cleanup() {
 // reloadRoutines reloads all routine files from disk
 func (t *BotLauncherTab) reloadRoutines() {
 	if t.manager == nil {
-		t.updateStatus("Error: Manager not initialized", true)
+		t.statusLabel.SetText("Error: Manager not initialized")
 		return
 	}
 
-	t.updateStatus("Reloading routines...", false)
+	t.statusLabel.SetText("Reloading routines...")
 
 	err := t.manager.ReloadRoutines()
 	if err != nil {
-		t.updateStatus(fmt.Sprintf("Failed to reload routines: %v", err), true)
+		t.statusLabel.SetText(fmt.Sprintf("Failed to reload routines: %v", err))
 		dialog.ShowError(fmt.Errorf("reload failed: %w", err), t.controller.window)
 		return
 	}
@@ -826,7 +837,7 @@ func (t *BotLauncherTab) reloadRoutines() {
 		}
 	}
 
-	t.updateStatus("✓ Routines reloaded successfully", false)
+	t.statusLabel.SetText("✓ Routines reloaded successfully")
 
 	// Show success dialog with count
 	validCount := len(t.availableRoutines)
@@ -838,20 +849,20 @@ func (t *BotLauncherTab) reloadRoutines() {
 // reloadTemplates reloads all template files from disk
 func (t *BotLauncherTab) reloadTemplates() {
 	if t.manager == nil {
-		t.updateStatus("Error: Manager not initialized", true)
+		t.statusLabel.SetText("Error: Manager not initialized")
 		return
 	}
 
-	t.updateStatus("Reloading templates...", false)
+	t.statusLabel.SetText("Reloading templates...")
 
 	err := t.manager.ReloadTemplates()
 	if err != nil {
-		t.updateStatus(fmt.Sprintf("Failed to reload templates: %v", err), true)
+		t.statusLabel.SetText(fmt.Sprintf("Failed to reload templates: %v", err))
 		dialog.ShowError(fmt.Errorf("reload failed: %w", err), t.controller.window)
 		return
 	}
 
-	t.updateStatus("✓ Templates reloaded successfully", false)
+	t.statusLabel.SetText("✓ Templates reloaded successfully")
 
 	// Show success dialog
 	dialog.ShowInformation("Reload Complete",
@@ -900,4 +911,232 @@ func (t *BotLauncherTab) updateBotVariables(config *BotLaunchConfig) {
 	}
 
 	config.variablesLabel.SetText(displayText.String())
+}
+
+// updateConfigButtonState enables/disables the config button based on whether routine has config
+func (t *BotLauncherTab) updateConfigButtonState(config *BotLaunchConfig) {
+	if config.selectedRoutine == "" || config.selectedRoutine == "<none>" {
+		config.configBtn.Disable()
+		return
+	}
+
+	// Get the routine filename from display name
+	routineFilename, ok := t.displayToFilename[config.selectedRoutine]
+	if !ok {
+		routineFilename = config.selectedRoutine
+	}
+
+	// Check if routine has config parameters
+	if t.manager != nil {
+		registry := t.manager.RoutineRegistry()
+		if rr, ok := registry.(*actions.RoutineRegistry); ok {
+			configParams, err := rr.GetConfig(routineFilename)
+			if err == nil && len(configParams) > 0 {
+				config.configBtn.Enable()
+				return
+			}
+		}
+	}
+
+	config.configBtn.Disable()
+}
+
+// showConfigEditor shows a dialog to edit routine config parameters
+func (t *BotLauncherTab) showConfigEditor(config *BotLaunchConfig) {
+	if config.selectedRoutine == "" || config.selectedRoutine == "<none>" {
+		return
+	}
+
+	// Get the routine filename
+	routineFilename, ok := t.displayToFilename[config.selectedRoutine]
+	if !ok {
+		routineFilename = config.selectedRoutine
+	}
+
+	// Get config parameters from routine registry
+	registry := t.manager.RoutineRegistry()
+	rr, ok := registry.(*actions.RoutineRegistry)
+	if !ok {
+		dialog.ShowError(fmt.Errorf("routine registry not available"), t.controller.window)
+		return
+	}
+
+	configParams, err := rr.GetConfig(routineFilename)
+	if err != nil {
+		dialog.ShowError(fmt.Errorf("failed to get config for routine: %w", err), t.controller.window)
+		return
+	}
+
+	if len(configParams) == 0 {
+		dialog.ShowInformation("No Configuration",
+			"This routine has no configurable parameters",
+			t.controller.window)
+		return
+	}
+
+	// Create form widgets for each config parameter
+	formWidgets := make(map[string]fyne.CanvasObject)
+	formEntries := make(map[string]interface{}) // Store widget references for value retrieval
+
+	var formItems []fyne.CanvasObject
+
+	for _, param := range configParams {
+		label := param.Name
+		if param.Label != "" {
+			label = param.Label
+		}
+
+		// Get current value (override or default)
+		currentValue := config.configOverrides[param.Name]
+		if currentValue == "" {
+			currentValue = param.Default
+		}
+
+		var inputWidget fyne.CanvasObject
+
+		switch param.Type {
+		case "text":
+			entry := widget.NewEntry()
+			entry.SetText(currentValue)
+			entry.SetPlaceHolder(param.Default)
+			inputWidget = entry
+			formEntries[param.Name] = entry
+
+		case "number":
+			entry := widget.NewEntry()
+			entry.SetText(currentValue)
+			entry.SetPlaceHolder(param.Default)
+			inputWidget = entry
+			formEntries[param.Name] = entry
+
+		case "checkbox":
+			check := widget.NewCheck("", nil)
+			check.Checked = (currentValue == "true")
+			inputWidget = check
+			formEntries[param.Name] = check
+
+		case "dropdown":
+			sel := widget.NewSelect(param.Options, nil)
+			sel.SetSelected(currentValue)
+			if sel.Selected == "" && len(param.Options) > 0 {
+				sel.SetSelected(param.Options[0])
+			}
+			inputWidget = sel
+			formEntries[param.Name] = sel
+		}
+
+		// Create label with description
+		labelText := label
+		if param.Required {
+			labelText += " *"
+		}
+		labelWidget := widget.NewLabel(labelText)
+
+		// Add description if present
+		if param.Description != "" {
+			descLabel := widget.NewLabel(param.Description)
+			descLabel.Wrapping = fyne.TextWrapWord
+			formItems = append(formItems,
+				labelWidget,
+				inputWidget,
+				descLabel,
+				widget.NewSeparator(),
+			)
+		} else {
+			formItems = append(formItems,
+				labelWidget,
+				inputWidget,
+				widget.NewSeparator(),
+			)
+		}
+
+		formWidgets[param.Name] = inputWidget
+	}
+
+	// Create scrollable form
+	formContainer := container.NewVBox(formItems...)
+	scrollForm := container.NewVScroll(formContainer)
+	scrollForm.SetMinSize(fyne.NewSize(400, 300))
+
+	// Show dialog with Apply/Cancel
+	dialog.ShowCustomConfirm(
+		fmt.Sprintf("Configure: %s", config.selectedRoutine),
+		"Apply",
+		"Cancel",
+		scrollForm,
+		func(apply bool) {
+			if !apply {
+				return
+			}
+
+			// Validate and collect values
+			newOverrides := make(map[string]string)
+			var validationErrors []string
+
+			for _, param := range configParams {
+				var value string
+
+				switch widget := formEntries[param.Name].(type) {
+				case *widget.Entry:
+					value = widget.Text
+				case *widget.Check:
+					if widget.Checked {
+						value = "true"
+					} else {
+						value = "false"
+					}
+				case *widget.Select:
+					value = widget.Selected
+				}
+
+				// Validate required fields
+				if param.Required && value == "" {
+					validationErrors = append(validationErrors, fmt.Sprintf("%s is required", param.Name))
+					continue
+				}
+
+				// Validate number type
+				if param.Type == "number" && value != "" {
+					numVal, err := strconv.ParseFloat(value, 64)
+					if err != nil {
+						validationErrors = append(validationErrors, fmt.Sprintf("%s must be a valid number", param.Name))
+						continue
+					}
+
+					// Check min/max
+					if param.Min != nil && numVal < *param.Min {
+						validationErrors = append(validationErrors, fmt.Sprintf("%s must be >= %v", param.Name, *param.Min))
+						continue
+					}
+					if param.Max != nil && numVal > *param.Max {
+						validationErrors = append(validationErrors, fmt.Sprintf("%s must be <= %v", param.Name, *param.Max))
+						continue
+					}
+				}
+
+				// Store override if different from default
+				if value != "" && value != param.Default {
+					newOverrides[param.Name] = value
+				}
+			}
+
+			// Show validation errors
+			if len(validationErrors) > 0 {
+				errMsg := "Validation errors:\n" + strings.Join(validationErrors, "\n")
+				dialog.ShowError(fmt.Errorf("%s", errMsg), t.controller.window)
+				return
+			}
+
+			// Apply overrides
+			config.configOverrides = newOverrides
+
+			// Show success message
+			if len(newOverrides) > 0 {
+				t.statusLabel.SetText(fmt.Sprintf("✓ Applied %d config override(s) for bot %d", len(newOverrides), config.instance))
+			} else {
+				t.statusLabel.SetText(fmt.Sprintf("✓ Reset config to defaults for bot %d", config.instance))
+			}
+		},
+		t.controller.window,
+	)
 }
