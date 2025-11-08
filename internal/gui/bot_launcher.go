@@ -113,10 +113,25 @@ func (t *BotLauncherTab) Build() fyne.CanvasObject {
 	})
 	t.stopBtn.Disable()
 
+	// Reload buttons for development
+	reloadRoutinesBtn := widget.NewButton("Reload Routines", func() {
+		t.reloadRoutines()
+	})
+
+	reloadTemplatesBtn := widget.NewButton("Reload Templates", func() {
+		t.reloadTemplates()
+	})
+
 	buttonsRow := container.NewHBox(
 		t.setAllBtn,
 		t.launchBtn,
 		t.stopBtn,
+	)
+
+	devToolsRow := container.NewHBox(
+		widget.NewLabel("Dev Tools:"),
+		reloadRoutinesBtn,
+		reloadTemplatesBtn,
 	)
 
 	// Status label
@@ -128,6 +143,7 @@ func (t *BotLauncherTab) Build() fyne.CanvasObject {
 			numBotsRow,
 			widget.NewSeparator(),
 			buttonsRow,
+			devToolsRow,
 			widget.NewSeparator(),
 			t.configContainer,
 			widget.NewSeparator(),
@@ -770,4 +786,64 @@ func (t *BotLauncherTab) stopStatusPolling() {
 func (t *BotLauncherTab) Cleanup() {
 	t.stopStatusPolling()
 	t.stopAllBots()
+}
+
+// reloadRoutines reloads all routine files from disk
+func (t *BotLauncherTab) reloadRoutines() {
+	if t.manager == nil {
+		t.updateStatus("Error: Manager not initialized", true)
+		return
+	}
+
+	t.updateStatus("Reloading routines...", false)
+
+	err := t.manager.ReloadRoutines()
+	if err != nil {
+		t.updateStatus(fmt.Sprintf("Failed to reload routines: %v", err), true)
+		dialog.ShowError(fmt.Errorf("reload failed: %w", err), t.controller.window)
+		return
+	}
+
+	// Reload the available routines list
+	t.loadAvailableRoutines()
+
+	// Update all dropdown menus
+	for _, config := range t.botConfigs {
+		if config.routineSelect != nil {
+			config.routineSelect.Options = t.availableRoutines
+			config.routineSelect.Refresh()
+		}
+	}
+
+	t.updateStatus("✓ Routines reloaded successfully", false)
+
+	// Show success dialog with count
+	validCount := len(t.availableRoutines)
+	dialog.ShowInformation("Reload Complete",
+		fmt.Sprintf("Successfully reloaded %d routine(s)", validCount),
+		t.controller.window)
+}
+
+// reloadTemplates reloads all template files from disk
+func (t *BotLauncherTab) reloadTemplates() {
+	if t.manager == nil {
+		t.updateStatus("Error: Manager not initialized", true)
+		return
+	}
+
+	t.updateStatus("Reloading templates...", false)
+
+	err := t.manager.ReloadTemplates()
+	if err != nil {
+		t.updateStatus(fmt.Sprintf("Failed to reload templates: %v", err), true)
+		dialog.ShowError(fmt.Errorf("reload failed: %w", err), t.controller.window)
+		return
+	}
+
+	t.updateStatus("✓ Templates reloaded successfully", false)
+
+	// Show success dialog
+	dialog.ShowInformation("Reload Complete",
+		"Successfully reloaded all templates from config/templates/",
+		t.controller.window)
 }
