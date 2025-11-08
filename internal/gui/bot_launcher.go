@@ -57,6 +57,9 @@ type BotLaunchConfig struct {
 	resumeBtn  *widget.Button
 	stopBtn    *widget.Button
 	restartBtn *widget.Button
+	// Variable inspector
+	variablesAccordion *widget.Accordion
+	variablesLabel     *widget.Label
 }
 
 // NewBotLauncherTab creates a new bot launcher tab
@@ -384,10 +387,17 @@ func (t *BotLauncherTab) createBotConfigCard(config *BotLaunchConfig) fyne.Canva
 		config.statusLabel,
 	)
 
+	// Variable inspector accordion
+	config.variablesLabel = widget.NewLabel("No variables")
+	config.variablesAccordion = widget.NewAccordion(
+		widget.NewAccordionItem("Variables", config.variablesLabel),
+	)
+
 	// Bottom section with status and controls
 	bottomSection := container.NewVBox(
 		statusRow,
 		controlButtons,
+		config.variablesAccordion,
 	)
 
 	card := container.NewBorder(
@@ -759,9 +769,10 @@ func (t *BotLauncherTab) startStatusPolling() {
 			case <-t.pollingStop:
 				return
 			case <-ticker.C:
-				// Poll status for all bot configs
+				// Poll status and variables for all bot configs
 				for _, config := range t.botConfigs {
 					t.updateBotButtons(config.instance)
+					t.updateBotVariables(config)
 				}
 			}
 		}
@@ -846,4 +857,47 @@ func (t *BotLauncherTab) reloadTemplates() {
 	dialog.ShowInformation("Reload Complete",
 		"Successfully reloaded all templates from config/templates/",
 		t.controller.window)
+}
+
+// updateBotVariables updates the variable display for a bot
+func (t *BotLauncherTab) updateBotVariables(config *BotLaunchConfig) {
+	if t.manager == nil || config.variablesLabel == nil {
+		return
+	}
+
+	// Get variables from manager
+	variables, err := t.manager.GetBotVariables(config.instance)
+	if err != nil {
+		// Bot not running or not found
+		config.variablesLabel.SetText("No variables (bot not running)")
+		return
+	}
+
+	// Format variables for display
+	if len(variables) == 0 {
+		config.variablesLabel.SetText("No variables set")
+		return
+	}
+
+	// Build formatted text with sorted keys
+	var varList []string
+	for key := range variables {
+		varList = append(varList, key)
+	}
+	sort.Strings(varList)
+
+	var displayText strings.Builder
+	for i, key := range varList {
+		value := variables[key]
+		// Truncate long values
+		if len(value) > 50 {
+			value = value[:47] + "..."
+		}
+		displayText.WriteString(fmt.Sprintf("%s = %s", key, value))
+		if i < len(varList)-1 {
+			displayText.WriteString("\n")
+		}
+	}
+
+	config.variablesLabel.SetText(displayText.String())
 }
