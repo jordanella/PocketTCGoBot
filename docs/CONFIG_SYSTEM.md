@@ -228,6 +228,46 @@ steps:
         name: counter  # Runtime variable
 ```
 
+## Nested Routines with Config Overrides
+
+When using `RunRoutine` to call another routine, you can override its config parameter defaults:
+
+```yaml
+# Main routine
+routine_name: "Main Routine"
+steps:
+  # Call nested routine with default config values
+  - action: RunRoutine
+    routine: "farming_loop"
+
+  # Call same routine with custom config values
+  - action: RunRoutine
+    routine: "farming_loop"
+    config:
+      farm_type: "Gold"
+      target_count: "20"
+      delay_seconds: "3"
+
+  # Call yet again with different values
+  - action: RunRoutine
+    routine: "farming_loop"
+    label: "Quick farm"
+    config:
+      target_count: "5"
+      delay_seconds: "1"
+```
+
+The `config` field in `RunRoutine` is a map of config parameter names to values. Any config parameters not specified in the override will use the routine's default values.
+
+**Important Notes:**
+
+- Config overrides only affect that specific RunRoutine call
+- The nested routine's config definitions determine which parameters are valid
+- Variable values persist across RunRoutine calls (they are not reset)
+- Config variables are initialized at the start of each RunRoutine execution
+
+See `bin/routines/example_nested_routine_with_config.yaml` for a complete example.
+
 ## Future Enhancements
 
 Planned features:

@@ -44,6 +44,9 @@ type RoutineRegistry struct {
 	// Routine sentries (filename -> sentries)
 	sentries map[string][]Sentry
 
+	// Routine config definitions (filename -> config params)
+	configs map[string][]ConfigParam
+
 	// Routine metadata (filename -> metadata)
 	metadata map[string]*RoutineMetadata
 
@@ -58,6 +61,7 @@ func NewRoutineRegistry(routinesPath string) *RoutineRegistry {
 		routinesPath:     routinesPath,
 		routines:         make(map[string]*ActionBuilder),
 		sentries:         make(map[string][]Sentry),
+		configs:          make(map[string][]ConfigParam),
 		metadata:         make(map[string]*RoutineMetadata),
 		validationErrors: make(map[string]error),
 	}
@@ -167,7 +171,22 @@ func (rr *RoutineRegistry) loadRoutine(filename string, path string) {
 	// Store sentries if any exist
 	if len(sentries) > 0 {
 		rr.sentries[filename] = sentries
-		log.Printf("[RoutineRegistry] ✓ Loaded: %s (%s) with %d sentry/sentries", displayName, filename, len(sentries))
+	}
+
+	// Store config definitions if any exist
+	if len(routine.Config) > 0 {
+		rr.configs[filename] = routine.Config
+	}
+
+	// Log based on what was loaded
+	configCount := len(routine.Config)
+	sentryCount := len(sentries)
+	if sentryCount > 0 && configCount > 0 {
+		log.Printf("[RoutineRegistry] ✓ Loaded: %s (%s) with %d config(s) and %d sentry/sentries", displayName, filename, configCount, sentryCount)
+	} else if sentryCount > 0 {
+		log.Printf("[RoutineRegistry] ✓ Loaded: %s (%s) with %d sentry/sentries", displayName, filename, sentryCount)
+	} else if configCount > 0 {
+		log.Printf("[RoutineRegistry] ✓ Loaded: %s (%s) with %d config(s)", displayName, filename, configCount)
 	} else {
 		log.Printf("[RoutineRegistry] ✓ Loaded: %s (%s)", displayName, filename)
 	}
@@ -221,6 +240,19 @@ func (rr *RoutineRegistry) GetSentries(filename string) ([]Sentry, error) {
 	}
 
 	return rr.sentries[filename], nil
+}
+
+// GetConfig retrieves the config definitions for a routine
+func (rr *RoutineRegistry) GetConfig(filename string) ([]ConfigParam, error) {
+	rr.mu.RLock()
+	defer rr.mu.RUnlock()
+
+	// Check if routine exists
+	if _, ok := rr.routines[filename]; !ok {
+		return nil, fmt.Errorf("routine '%s' not found", filename)
+	}
+
+	return rr.configs[filename], nil
 }
 
 // Has checks if a routine exists in the registry (valid or invalid)
@@ -367,6 +399,7 @@ func (rr *RoutineRegistry) Reload() error {
 	// Clear existing data
 	rr.routines = make(map[string]*ActionBuilder)
 	rr.sentries = make(map[string][]Sentry)
+	rr.configs = make(map[string][]ConfigParam)
 	rr.metadata = make(map[string]*RoutineMetadata)
 	rr.validationErrors = make(map[string]error)
 

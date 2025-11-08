@@ -38,13 +38,20 @@ func (rl *RoutineLoader) LoadFromFile(filepath string) (*ActionBuilder, []Sentry
 		return nil, nil, fmt.Errorf("failed to unmarshal routine YAML: %w", err)
 	}
 
-	// 3. Create the new ActionBuilder with optional template registry
+	// 3. Validate config parameters (if any)
+	for i, param := range routine.Config {
+		if err := param.Validate(); err != nil {
+			return nil, nil, fmt.Errorf("routine '%s' config param %d validation failed: %w", routine.RoutineName, i+1, err)
+		}
+	}
+
+	// 4. Create the new ActionBuilder with optional template registry
 	ab := NewActionBuilder()
 	if rl.templateRegistry != nil {
 		ab.WithTemplateRegistry(rl.templateRegistry)
 	}
 
-	// 4. Validate and Build all steps
+	// 5. Validate and Build all steps
 	// Note: We use the *same* ActionBuilder (ab) for both validation and building
 	// to ensure nested builders (like WhileTemplateExists) get a valid reference.
 	for i, action := range routine.Steps {
@@ -58,7 +65,7 @@ func (rl *RoutineLoader) LoadFromFile(filepath string) (*ActionBuilder, []Sentry
 		ab = action.Build(ab)
 	}
 
-	// 5. Validate sentries (if any)
+	// 6. Validate sentries (if any)
 	for i := range routine.Sentries {
 		if err := routine.Sentries[i].Validate(ab); err != nil {
 			return nil, nil, fmt.Errorf("routine '%s' sentry %d validation failed: %w", routine.RoutineName, i+1, err)

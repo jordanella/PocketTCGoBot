@@ -1,0 +1,71 @@
+routine_name: "Nested Routine with Config Example"
+description: "Demonstrates calling nested routines with config parameter overrides"
+tags: ["example", "nested", "config"]
+
+steps:
+  # Call example_config routine with default values
+  - action: RunRoutine
+    routine: "example_config"
+    label: "Run with defaults"
+
+  # Wait a bit
+  - action: Delay
+    count: 2
+
+  # Call example_config routine with custom config values
+  - action: RunRoutine
+    routine: "example_config"
+    label: "Run with Gold farming"
+    config:
+      farm_type: "Gold"
+      target_count: "3"
+      delay_seconds: "1"
+      enable_notifications: "false"
+
+  # Wait a bit
+  - action: Delay
+    count: 2
+
+  # Call example_config routine for Experience farming
+  - action: RunRoutine
+    routine: "example_config"
+    label: "Run with Experience farming"
+    config:
+      farm_type: "Experience"
+      target_count: "5"
+      delay_seconds: "2"
+      enable_notifications: "true"
+      start_button: "battle_exp_start"
+
+  # Example: Using variables to determine which routine to run
+  - action: SetVariable
+    name: current_mode
+    value: "farming"
+
+  - action: If
+    condition:
+      type: VariableEquals
+      variable: current_mode
+      value: "farming"
+    then:
+      # Run farming routine with specific settings
+      - action: RunRoutine
+        routine: "example_config"
+        label: "Farming mode"
+        config:
+          farm_type: "Materials"
+          target_count: "10"
+
+  # Example: Running same routine multiple times with different configs
+  - action: Repeat
+    iterations: 3
+    actions:
+      - action: RunRoutine
+        routine: "example_config"
+        label: "Quick farm iteration"
+        config:
+          target_count: "1"
+          delay_seconds: "1"
+
+      - action: Delay
+        count: 1

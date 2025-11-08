@@ -11,9 +11,17 @@ import (
 // For example, if you have "common_navigation.yaml", use routine: "common_navigation"
 //
 // The optional 'label' field can be used for readability in logs and doesn't affect execution.
+//
+// Config overrides allow you to pass values to the nested routine's config parameters:
+//   - action: RunRoutine
+//     routine: "farming_loop"
+//     config:
+//       farm_type: "Gold"
+//       target_count: "20"
 type RunRoutine struct {
-	Routine string `yaml:"routine"` // Filename of the routine to run (without extension)
-	Label   string `yaml:"label"`   // Optional human-readable label for logging
+	Routine string            `yaml:"routine"` // Filename of the routine to run (without extension)
+	Label   string            `yaml:"label"`   // Optional human-readable label for logging
+	Config  map[string]string `yaml:"config"`  // Optional config parameter overrides
 }
 
 func (a *RunRoutine) Validate(ab *ActionBuilder) error {
@@ -39,10 +47,28 @@ func (a *RunRoutine) Build(ab *ActionBuilder) *ActionBuilder {
 	step := Step{
 		name: fmt.Sprintf("RunRoutine: %s", displayName),
 		execute: func(bot BotInterface) error {
-			// Get the routine from the registry (eagerly loaded)
-			routineBuilder, err := bot.Routines().Get(a.Routine)
+			registry := bot.Routines()
+
+			// Get the routine builder from the registry
+			routineBuilder, err := registry.Get(a.Routine)
 			if err != nil {
 				return fmt.Errorf("failed to get routine '%s': %w", a.Routine, err)
+			}
+
+			// Initialize config variables if the routine has config parameters
+			// Try to cast to extended interface to access GetConfig
+			if extRegistry, ok := registry.(*RoutineRegistry); ok {
+				configParams, err := extRegistry.GetConfig(a.Routine)
+				if err != nil {
+					return fmt.Errorf("failed to get config for routine '%s': %w", a.Routine, err)
+				}
+
+				// Initialize config variables with overrides from this RunRoutine action
+				if len(configParams) > 0 {
+					if err := InitializeConfigVariables(bot, configParams, a.Config); err != nil {
+						return fmt.Errorf("failed to initialize config for routine '%s': %w", a.Routine, err)
+					}
+				}
 			}
 
 			// Execute the loaded routine

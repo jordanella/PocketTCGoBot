@@ -1,6 +1,9 @@
 package actions
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 
 // ConfigParam defines a user-configurable parameter for a routine
 type ConfigParam struct {
@@ -59,6 +62,32 @@ func (cp *ConfigParam) Validate() error {
 		}
 		if !found {
 			return fmt.Errorf("config param '%s': default '%s' not in options %v", cp.Name, cp.Default, cp.Options)
+		}
+	}
+
+	// Validate min/max for numbers
+	if cp.Type == "number" {
+		// Check min < max if both specified
+		if cp.Min != nil && cp.Max != nil && *cp.Min > *cp.Max {
+			return fmt.Errorf("config param '%s': min (%v) cannot be greater than max (%v)", cp.Name, *cp.Min, *cp.Max)
+		}
+
+		// Validate default value is a valid number and within range
+		if cp.Default != "" {
+			defaultVal, err := strconv.ParseFloat(cp.Default, 64)
+			if err != nil {
+				return fmt.Errorf("config param '%s': default value '%s' is not a valid number", cp.Name, cp.Default)
+			}
+
+			// Check against min
+			if cp.Min != nil && defaultVal < *cp.Min {
+				return fmt.Errorf("config param '%s': default value %v is less than min %v", cp.Name, defaultVal, *cp.Min)
+			}
+
+			// Check against max
+			if cp.Max != nil && defaultVal > *cp.Max {
+				return fmt.Errorf("config param '%s': default value %v is greater than max %v", cp.Name, defaultVal, *cp.Max)
+			}
 		}
 	}
 
