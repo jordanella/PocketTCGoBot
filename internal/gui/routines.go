@@ -241,8 +241,8 @@ func (t *RoutinesTab) buildSelectedRoutine() {
 	// Create routine loader
 	loader := actions.NewRoutineLoader().WithTemplateRegistry(templateRegistry)
 
-	// Build the routine
-	_, err := loader.LoadFromFile(routinePath)
+	// Build the routine (now returns sentries as well)
+	_, _, err := loader.LoadFromFile(routinePath)
 
 	if err != nil {
 		t.statusLabel.SetText(fmt.Sprintf("❌ Build failed: %s", err.Error()))

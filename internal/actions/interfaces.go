@@ -30,6 +30,7 @@ type BotInterface interface {
 	Config() ConfigInterface
 	Templates() TemplateRegistryInterface
 	Routines() RoutineRegistryInterface
+	RoutineController() RoutineControllerInterface
 
 	// Context management
 	Context() context.Context
@@ -47,4 +48,31 @@ type TemplateRegistryInterface interface {
 	Get(name string) (cv.Template, bool)
 	MustGet(name string) cv.Template
 	Has(name string) bool
+}
+
+// RoutineRegistryInterface defines the interface for routine lookup
+type RoutineRegistryInterface interface {
+	Get(name string) (*ActionBuilder, error)
+	GetWithSentries(name string) (*ActionBuilder, []Sentry, error)
+	Has(name string) bool
+	Reload() error
+	ListAvailable() []string
+	GetMetadata(filename string) interface{}
+	GetValidationError(filename string) error
+}
+
+// RoutineControllerInterface defines the interface for routine state control
+// This allows sentries to pause/resume the main routine execution
+type RoutineControllerInterface interface {
+	IsRunning() bool
+	IsPaused() bool
+	IsStopped() bool
+	Pause() bool
+	Resume() bool
+	ForceStop() bool
+	CheckPauseOrStop() bool
+	Reset()
+	SetRunning()
+	SetCompleted()
+	SetIdle()
 }

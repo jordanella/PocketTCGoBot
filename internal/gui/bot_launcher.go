@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
+	"jordanella.com/pocket-tcg-go/internal/actions"
 	"jordanella.com/pocket-tcg-go/internal/bot"
 	"jordanella.com/pocket-tcg-go/internal/coordinator"
 )
@@ -155,7 +156,12 @@ func (t *BotLauncherTab) loadAvailableRoutines() {
 
 		// Build display strings: "DisplayName (filename)"
 		for _, filename := range filenames {
-			meta := t.manager.RoutineRegistry().GetMetadata(filename)
+			metaInterface := t.manager.RoutineRegistry().GetMetadata(filename)
+			// Type assert to access fields (GetMetadata returns interface{} for compatibility)
+			meta, ok := metaInterface.(*actions.RoutineMetadata)
+			if !ok {
+				continue // Skip if type assertion fails
+			}
 			displayText := fmt.Sprintf("%s (%s)", meta.DisplayName, meta.Filename)
 
 			// Check if invalid

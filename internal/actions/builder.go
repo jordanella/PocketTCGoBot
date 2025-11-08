@@ -157,10 +157,16 @@ func (ab *ActionBuilder) ExecuteOnce(bot BotInterface) error {
 
 func (ab *ActionBuilder) executeSteps(ctx context.Context, bot BotInterface) error {
 	for _, step := range ab.steps {
+		// Check for context cancellation
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
+		}
+
+		// Check for pause/stop signals from routine controller
+		if !ab.checkExecutionState(bot) {
+			return fmt.Errorf("routine stopped by controller")
 		}
 
 		if step.issue != nil {
@@ -174,6 +180,28 @@ func (ab *ActionBuilder) executeSteps(ctx context.Context, bot BotInterface) err
 		}
 	}
 	return nil
+}
+
+// checkExecutionState checks if routine should pause or stop
+// Returns true if execution should continue, false if stopped
+func (ab *ActionBuilder) checkExecutionState(bot BotInterface) bool {
+	// Check if bot has routine controller
+	type routineControllerProvider interface {
+		RoutineController() RoutineControllerInterface
+	}
+
+	provider, ok := bot.(routineControllerProvider)
+	if !ok {
+		return true // No controller, continue normally
+	}
+
+	controller := provider.RoutineController()
+	if controller == nil {
+		return true // No controller, continue normally
+	}
+
+	// Use the controller's built-in pause/stop checking
+	return controller.CheckPauseOrStop()
 }
 
 // executeWithErrorMonitoring executes steps while checking for errors

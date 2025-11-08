@@ -1,0 +1,56 @@
+routine_name: "Example Complex Routine"
+
+steps:
+  # Simple click action
+  - action: Click
+    x: 100
+    y: 200
+
+  # Nested loop with WhileImageFound (using template registry lookup)
+  - action: WhileImageFound
+    max_attempts: 10
+    template: "OK"  # Look up template from registry by name
+    actions:
+      # These nested actions will be executed in each loop iteration
+      - action: Click
+        x: 500
+        y: 100
+
+      - action: Click
+        x: 300
+        y: 400
+
+  # Another action after the loop completes
+  - action: Click
+    x: 150
+    y: 250
+
+  # Action-level overrides for threshold and region
+  - action: WhileImageFound
+    max_attempts: 5
+    template: "Main"  # Template from registry
+    threshold: 0.95        # Optional: override template's threshold
+    region:                # Optional: override template's search region
+      x1: 100
+      y1: 200
+      x2: 500
+      y2: 600
+    actions:
+      # First level of nesting
+      - action: Click
+        x: 200
+        y: 300
+
+      # Second level of nesting - a loop within a loop
+      - action: WhileImageFound
+        max_attempts: 3
+        template: "Confirm"  # Uses template's default threshold and region
+        actions:
+          # Deeply nested actions
+          - action: Click
+            x: 400
+            y: 500
+
+          - action: Click
+            x: 450
+            y: 550

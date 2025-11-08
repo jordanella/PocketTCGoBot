@@ -36,7 +36,7 @@ type Controller struct {
 	resultsTab     *ResultsTab
 	controlTab     *ControlTab
 	adbTestTab     *ADBTestTab
-	routinesTab    *RoutinesTab
+	routinesTab    *RoutinesEnhancedTab
 	botLauncherTab *BotLauncherTab
 
 	// Database tabs
@@ -82,7 +82,16 @@ func NewController(cfg *bot.Config, app fyne.App, window fyne.Window) *Controlle
 	ctrl.resultsTab = NewResultsTab(ctrl)
 	ctrl.controlTab = NewControlTab(ctrl)
 	ctrl.adbTestTab = NewADBTestTab(ctrl)
-	ctrl.routinesTab = NewRoutinesTab(ctrl)
+
+	// Initialize manager for routines tab (shared with bot launcher)
+	manager, err := bot.NewManager(cfg)
+	if err != nil {
+		// Log error but continue - tab will handle nil manager gracefully
+		ctrl.logTab.AddLog(LogLevelWarn, 0, fmt.Sprintf("Failed to create manager for routines tab: %v", err))
+		manager = nil
+	}
+
+	ctrl.routinesTab = NewRoutinesEnhancedTab(ctrl, manager)
 	ctrl.botLauncherTab = NewBotLauncherTab(ctrl)
 
 	// Initialize database after log tab is ready

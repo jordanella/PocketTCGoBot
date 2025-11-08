@@ -13,35 +13,22 @@ import (
 
 // RoutineMetadata stores information about a routine
 type RoutineMetadata struct {
-	Filename    string // e.g., "common_navigation"
-	DisplayName string // e.g., "Common Navigation Routine"
+	Filename    string   // e.g., "common_navigation"
+	DisplayName string   // e.g., "Common Navigation Routine"
+	Description string   // Optional description of the routine's purpose
+	Tags        []string // Optional tags for organization and filtering (e.g., "sentry", "navigation")
 }
 
-// RoutineRegistryInterface provides access to pre-loaded and validated routines
-type RoutineRegistryInterface interface {
-	// Get retrieves a pre-loaded routine by filename
-	Get(filename string) (*ActionBuilder, error)
-
-	// Has checks if a routine exists in the registry
-	Has(filename string) bool
-
-	// GetValidationError returns the validation error for a routine (if any)
-	GetValidationError(filename string) error
-
-	// GetMetadata returns metadata for a routine
-	GetMetadata(filename string) *RoutineMetadata
-
-	// ListAvailable returns all discovered routine filenames
-	ListAvailable() []string
+// RoutineRegistryExtendedInterface provides full access to the routine registry
+// This extends the basic RoutineRegistryInterface with additional methods
+type RoutineRegistryExtendedInterface interface {
+	RoutineRegistryInterface
 
 	// ListValid returns only valid routine filenames
 	ListValid() []string
 
 	// ListInvalid returns routine filenames that failed validation
 	ListInvalid() []string
-
-	// Reload clears and reloads all routines from disk
-	Reload() error
 }
 
 // RoutineRegistry manages routine loading and validation
@@ -53,6 +40,9 @@ type RoutineRegistry struct {
 
 	// Pre-loaded routines (filename -> builder)
 	routines map[string]*ActionBuilder
+
+	// Routine sentries (filename -> sentries)
+	sentries map[string][]Sentry
 
 	// Routine metadata (filename -> metadata)
 	metadata map[string]*RoutineMetadata
@@ -67,6 +57,7 @@ func NewRoutineRegistry(routinesPath string) *RoutineRegistry {
 	rr := &RoutineRegistry{
 		routinesPath:     routinesPath,
 		routines:         make(map[string]*ActionBuilder),
+		sentries:         make(map[string][]Sentry),
 		metadata:         make(map[string]*RoutineMetadata),
 		validationErrors: make(map[string]error),
 	}
@@ -153,6 +144,8 @@ func (rr *RoutineRegistry) loadRoutine(filename string, path string) {
 	rr.metadata[filename] = &RoutineMetadata{
 		Filename:    filename,
 		DisplayName: displayName,
+		Description: routine.Description,
+		Tags:        routine.Tags,
 	}
 
 	// Now load and validate with the loader
@@ -161,7 +154,7 @@ func (rr *RoutineRegistry) loadRoutine(filename string, path string) {
 		loader.WithTemplateRegistry(rr.templateRegistry)
 	}
 
-	builder, err := loader.LoadFromFile(path)
+	builder, sentries, err := loader.LoadFromFile(path)
 	if err != nil {
 		// Store the validation error
 		rr.validationErrors[filename] = fmt.Errorf("validation failed: %w", err)
@@ -170,7 +163,14 @@ func (rr *RoutineRegistry) loadRoutine(filename string, path string) {
 
 	// Store the successfully loaded routine
 	rr.routines[filename] = builder
-	log.Printf("[RoutineRegistry] ✓ Loaded: %s (%s)", displayName, filename)
+
+	// Store sentries if any exist
+	if len(sentries) > 0 {
+		rr.sentries[filename] = sentries
+		log.Printf("[RoutineRegistry] ✓ Loaded: %s (%s) with %d sentry/sentries", displayName, filename, len(sentries))
+	} else {
+		log.Printf("[RoutineRegistry] ✓ Loaded: %s (%s)", displayName, filename)
+	}
 }
 
 // Get retrieves a pre-loaded routine by filename
@@ -191,6 +191,38 @@ func (rr *RoutineRegistry) Get(filename string) (*ActionBuilder, error) {
 	return nil, fmt.Errorf("routine '%s' not found", filename)
 }
 
+// GetWithSentries retrieves a pre-loaded routine with its sentries
+func (rr *RoutineRegistry) GetWithSentries(filename string) (*ActionBuilder, []Sentry, error) {
+	rr.mu.RLock()
+	defer rr.mu.RUnlock()
+
+	// Check if there was a validation error
+	if err, hasError := rr.validationErrors[filename]; hasError {
+		return nil, nil, err
+	}
+
+	// Return the pre-loaded routine and its sentries
+	if builder, ok := rr.routines[filename]; ok {
+		sentries := rr.sentries[filename] // Will be nil/empty if no sentries
+		return builder, sentries, nil
+	}
+
+	return nil, nil, fmt.Errorf("routine '%s' not found", filename)
+}
+
+// GetSentries retrieves just the sentries for a routine
+func (rr *RoutineRegistry) GetSentries(filename string) ([]Sentry, error) {
+	rr.mu.RLock()
+	defer rr.mu.RUnlock()
+
+	// Check if routine exists
+	if _, ok := rr.routines[filename]; !ok {
+		return nil, fmt.Errorf("routine '%s' not found", filename)
+	}
+
+	return rr.sentries[filename], nil
+}
+
 // Has checks if a routine exists in the registry (valid or invalid)
 func (rr *RoutineRegistry) Has(filename string) bool {
 	rr.mu.RLock()
@@ -201,8 +233,13 @@ func (rr *RoutineRegistry) Has(filename string) bool {
 	return inRoutines || inErrors
 }
 
-// GetMetadata returns metadata for a routine
-func (rr *RoutineRegistry) GetMetadata(filename string) *RoutineMetadata {
+// GetMetadata returns metadata for a routine (interface{} for interface compliance)
+func (rr *RoutineRegistry) GetMetadata(filename string) interface{} {
+	return rr.getMetadataTyped(filename)
+}
+
+// getMetadataTyped returns typed metadata for internal use
+func (rr *RoutineRegistry) getMetadataTyped(filename string) *RoutineMetadata {
 	rr.mu.RLock()
 	defer rr.mu.RUnlock()
 
@@ -283,6 +320,45 @@ func (rr *RoutineRegistry) ListInvalid() []string {
 	return names
 }
 
+// ListByTag returns routine filenames that have a specific tag
+func (rr *RoutineRegistry) ListByTag(tag string) []string {
+	rr.mu.RLock()
+	defer rr.mu.RUnlock()
+
+	names := make([]string, 0)
+	for filename, meta := range rr.metadata {
+		// Check if routine has this tag
+		for _, t := range meta.Tags {
+			if t == tag {
+				names = append(names, filename)
+				break
+			}
+		}
+	}
+
+	// Sort for consistent ordering
+	sort.Strings(names)
+	return names
+}
+
+// HasTag checks if a routine has a specific tag
+func (rr *RoutineRegistry) HasTag(filename string, tag string) bool {
+	rr.mu.RLock()
+	defer rr.mu.RUnlock()
+
+	meta, ok := rr.metadata[filename]
+	if !ok {
+		return false
+	}
+
+	for _, t := range meta.Tags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
+}
+
 // Reload clears and reloads all routines from disk
 func (rr *RoutineRegistry) Reload() error {
 	rr.mu.Lock()
@@ -290,6 +366,7 @@ func (rr *RoutineRegistry) Reload() error {
 
 	// Clear existing data
 	rr.routines = make(map[string]*ActionBuilder)
+	rr.sentries = make(map[string][]Sentry)
 	rr.metadata = make(map[string]*RoutineMetadata)
 	rr.validationErrors = make(map[string]error)
 

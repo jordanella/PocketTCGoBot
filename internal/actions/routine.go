@@ -13,7 +13,10 @@ import (
 // Routine holds the entire routine definition from the YAML file
 type Routine struct {
 	RoutineName string       `yaml:"routine_name"`
-	Steps       []ActionStep `yaml:"steps"` // ActionStep is the interface you already defined
+	Description string       `yaml:"description,omitempty"` // Optional description of the routine's purpose
+	Tags        []string     `yaml:"tags,omitempty"`        // Optional tags for organization (e.g., "sentry", "navigation", "combat")
+	Steps       []ActionStep `yaml:"steps"`                 // ActionStep is the interface you already defined
+	Sentries    []Sentry     `yaml:"sentries,omitempty"`    // Sentry definitions for error handling
 }
 
 // Custom Unmarshaler for polymorphic actions (Steps)
@@ -29,6 +32,36 @@ func (r *Routine) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// Extract the routine_name
 	if name, ok := raw["routine_name"].(string); ok {
 		r.RoutineName = name
+	}
+
+	// Extract the description
+	if desc, ok := raw["description"].(string); ok {
+		r.Description = desc
+	}
+
+	// Extract the tags
+	if tagsRaw, ok := raw["tags"].([]interface{}); ok {
+		r.Tags = make([]string, len(tagsRaw))
+		for i, tag := range tagsRaw {
+			if tagStr, ok := tag.(string); ok {
+				r.Tags[i] = tagStr
+			}
+		}
+	}
+
+	// Extract sentries (will be unmarshaled separately)
+	if sentriesRaw, ok := raw["sentries"].([]interface{}); ok {
+		r.Sentries = make([]Sentry, len(sentriesRaw))
+		for i, sentryRaw := range sentriesRaw {
+			// Marshal back to YAML and unmarshal into Sentry struct
+			sentryBytes, err := yaml.Marshal(sentryRaw)
+			if err != nil {
+				return fmt.Errorf("sentry %d: error marshaling: %w", i+1, err)
+			}
+			if err := yaml.Unmarshal(sentryBytes, &r.Sentries[i]); err != nil {
+				return fmt.Errorf("sentry %d: error unmarshaling: %w", i+1, err)
+			}
+		}
 	}
 
 	// Now, handle the 'steps' as a raw slice

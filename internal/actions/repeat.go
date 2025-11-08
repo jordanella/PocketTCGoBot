@@ -69,6 +69,10 @@ func (a *Repeat) Build(ab *ActionBuilder) *ActionBuilder {
 				if err := subBuilder.executeSteps(bot.Context(), bot); err != nil {
 					return fmt.Errorf("repeat iteration %d failed: %w", i+1, err)
 				}
+
+				if !ab.checkExecutionState(bot) {
+					return fmt.Errorf("routine stopped by controller during loop")
+				}
 			}
 			return nil
 		},

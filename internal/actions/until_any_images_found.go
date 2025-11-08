@@ -119,6 +119,10 @@ func (a *UntilAnyImagesFound) Build(ab *ActionBuilder) *ActionBuilder {
 
 				attempt++
 				time.Sleep(100 * time.Millisecond)
+
+				if !ab.checkExecutionState(bot) {
+					return fmt.Errorf("routine stopped by controller during loop")
+				}
 			}
 		},
 		issue: a.Validate(ab),

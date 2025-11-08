@@ -24,17 +24,18 @@ func (rl *RoutineLoader) WithTemplateRegistry(registry TemplateRegistryInterface
 
 // LoadFromFile reads a YAML file, unmarshals the Routine, validates all actions,
 // and builds the final executable ActionBuilder that can be executed on any bot.
-func (rl *RoutineLoader) LoadFromFile(filepath string) (*ActionBuilder, error) {
+// Returns the ActionBuilder and the associated sentries (if any)
+func (rl *RoutineLoader) LoadFromFile(filepath string) (*ActionBuilder, []Sentry, error) {
 	// 1. Read the File
 	data, err := os.ReadFile(filepath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read routine file %s: %w", filepath, err)
+		return nil, nil, fmt.Errorf("failed to read routine file %s: %w", filepath, err)
 	}
 
 	var routine Routine
 	// 2. Unmarshal the YAML (using the custom UnmarshalYAML handler for polymorphism)
 	if err := yaml.Unmarshal(data, &routine); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal routine YAML: %w", err)
+		return nil, nil, fmt.Errorf("failed to unmarshal routine YAML: %w", err)
 	}
 
 	// 3. Create the new ActionBuilder with optional template registry
@@ -49,7 +50,7 @@ func (rl *RoutineLoader) LoadFromFile(filepath string) (*ActionBuilder, error) {
 	for i, action := range routine.Steps {
 		// Validation Check (Fails fast if invalid configuration)
 		if err := action.Validate(ab); err != nil {
-			return nil, fmt.Errorf("routine '%s' step %d validation failed: %w", routine.RoutineName, i+1, err)
+			return nil, nil, fmt.Errorf("routine '%s' step %d validation failed: %w", routine.RoutineName, i+1, err)
 		}
 
 		// Build the step (appends the executable Step to ab.steps and captures
@@ -57,6 +58,13 @@ func (rl *RoutineLoader) LoadFromFile(filepath string) (*ActionBuilder, error) {
 		ab = action.Build(ab)
 	}
 
+	// 5. Validate sentries (if any)
+	for i := range routine.Sentries {
+		if err := routine.Sentries[i].Validate(ab); err != nil {
+			return nil, nil, fmt.Errorf("routine '%s' sentry %d validation failed: %w", routine.RoutineName, i+1, err)
+		}
+	}
+
 	// The ab.steps slice now holds the entire executable routine
-	return ab, nil
+	return ab, routine.Sentries, nil
 }

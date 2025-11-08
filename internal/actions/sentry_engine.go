@@ -1,0 +1,192 @@
+package actions
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"time"
+)
+
+// SentryEngine manages parallel execution of sentry routines
+type SentryEngine struct {
+	bot       BotInterface
+	sentries  []Sentry
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
+	mu        sync.RWMutex
+	isRunning bool
+}
+
+// NewSentryEngine creates a new sentry engine
+func NewSentryEngine(bot BotInterface, sentries []Sentry) *SentryEngine {
+	ctx, cancel := context.WithCancel(bot.Context())
+	return &SentryEngine{
+		bot:      bot,
+		sentries: sentries,
+		ctx:      ctx,
+		cancel:   cancel,
+	}
+}
+
+// Start begins all sentry monitoring routines in parallel
+func (se *SentryEngine) Start() error {
+	se.mu.Lock()
+	defer se.mu.Unlock()
+
+	if se.isRunning {
+		return fmt.Errorf("sentry engine already running")
+	}
+
+	// Validate all sentries have their routine builders loaded
+	for i, sentry := range se.sentries {
+		if sentry.GetRoutineBuilder() == nil {
+			return fmt.Errorf("sentry %d (%s): routine builder not loaded", i, sentry.Routine)
+		}
+	}
+
+	// Start a goroutine for each sentry
+	for i := range se.sentries {
+		se.wg.Add(1)
+		go se.runSentry(&se.sentries[i])
+	}
+
+	se.isRunning = true
+	return nil
+}
+
+// Stop gracefully shuts down all sentry routines
+func (se *SentryEngine) Stop() {
+	se.mu.Lock()
+	if !se.isRunning {
+		se.mu.Unlock()
+		return
+	}
+	se.mu.Unlock()
+
+	se.cancel()
+	se.wg.Wait()
+
+	se.mu.Lock()
+	se.isRunning = false
+	se.mu.Unlock()
+}
+
+// runSentry executes a single sentry routine on its polling interval
+func (se *SentryEngine) runSentry(sentry *Sentry) {
+	defer se.wg.Done()
+
+	ticker := time.NewTicker(sentry.GetFrequency())
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-se.ctx.Done():
+			return
+
+		case <-ticker.C:
+			// Check if main routine is stopped
+			if se.bot.IsStopped() {
+				return
+			}
+
+			// Execute the sentry routine
+			se.executeSentry(sentry)
+		}
+	}
+}
+
+// executeSentry executes a sentry routine and handles the result
+func (se *SentryEngine) executeSentry(sentry *Sentry) {
+	// Log execution start (severity-based)
+	se.logSentry(sentry, "Executing sentry routine")
+
+	// Get the routine builder
+	builder := sentry.GetRoutineBuilder()
+	if builder == nil {
+		se.logSentry(sentry, "ERROR: routine builder is nil")
+		return
+	}
+
+	// Pause main routine execution before running sentry
+	controller := se.getRoutineController()
+	if controller != nil && controller.IsRunning() {
+		controller.Pause()
+		defer se.handleSentryResult(sentry, controller, nil) // Will be called even if panic
+	}
+
+	// Execute the sentry routine
+	err := builder.Execute(se.bot)
+
+	// Handle result based on success/failure
+	if controller != nil {
+		se.handleSentryResult(sentry, controller, err)
+	}
+}
+
+// handleSentryResult processes the sentry execution result and updates routine state
+func (se *SentryEngine) handleSentryResult(sentry *Sentry, controller RoutineControllerInterface, err error) {
+	var action SentryAction
+	if err == nil {
+		// Success: routine returned nil error
+		action = sentry.OnSuccess
+		se.logSentry(sentry, fmt.Sprintf("Sentry succeeded, action: %s", action))
+	} else {
+		// Failure: routine returned error
+		action = sentry.OnFailure
+		se.logSentry(sentry, fmt.Sprintf("Sentry failed (%v), action: %s", err, action))
+	}
+
+	// Execute the appropriate action
+	switch action {
+	case SentryActionResume:
+		controller.Resume()
+
+	case SentryActionPause:
+		// Keep paused, do nothing
+
+	case SentryActionStop:
+		// Graceful stop - let main routine finish current step
+		controller.ForceStop()
+
+	case SentryActionForceStop:
+		// Immediate stop
+		controller.ForceStop()
+
+	default:
+		// Unknown action, default to resume
+		se.logSentry(sentry, fmt.Sprintf("Unknown action '%s', defaulting to resume", action))
+		controller.Resume()
+	}
+}
+
+// getRoutineController safely retrieves the routine controller from the bot
+func (se *SentryEngine) getRoutineController() RoutineControllerInterface {
+	// We need to extend BotInterface to include RoutineController access
+	// For now, we'll use a type assertion
+	type routineControllerProvider interface {
+		RoutineController() RoutineControllerInterface
+	}
+
+	if provider, ok := se.bot.(routineControllerProvider); ok {
+		return provider.RoutineController()
+	}
+	return nil
+}
+
+// logSentry logs a message with severity-based prefix
+func (se *SentryEngine) logSentry(sentry *Sentry, message string) {
+	prefix := ""
+	switch sentry.Severity {
+	case SentrySeverityCritical:
+		prefix = "[CRITICAL]"
+	case SentrySeverityHigh:
+		prefix = "[HIGH]"
+	case SentrySeverityMedium:
+		prefix = "[MEDIUM]"
+	case SentrySeverityLow:
+		prefix = "[LOW]"
+	}
+
+	fmt.Printf("%s [Sentry:%s] %s\n", prefix, sentry.Routine, message)
+}
