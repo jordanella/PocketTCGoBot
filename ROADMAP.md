@@ -1,440 +1,411 @@
 # PocketTCGoBot - Development Roadmap
 
-This document outlines the development roadmap for transitioning from prototype to production-ready bot and achieving feature parity with the legacy AHK implementation.
+This document outlines the development roadmap for achieving a functioning multi-instance bot prototype with full lifecycle controls.
 
-## Current Status: Early Prototype
+## Current Status: Functioning Prototype Development
 
-**Core Infrastructure:** ✅ Complete
-**Basic Functionality:** 🚧 In Progress
-**Feature Parity:** ⏳ Planned
-**Polish & Testing:** ⏳ Planned
-
----
-
-## Phase 1: Core Parity (Current Phase)
-
-**Goal:** Match all functionality of the AHK bot with improved reliability
-
-### 1.1 Action Library Completion 🚧
-
-**Priority:** HIGH
-**Status:** In Progress (30% complete)
-
-- [x] Basic primitives (Click, Swipe, Sleep, Key)
-- [x] CV actions (FindAndClickCenter, WaitFor)
-- [x] Loop constructs (Until, While)
-- [x] Wonder Pick basic flow
-- [ ] Complete Wonder Pick error handling
-- [ ] Pack opening sequences
-- [ ] Mission navigation and completion
-- [ ] Home navigation (GoHome)
-- [ ] Shop navigation (GoToShop)
-- [ ] Settings navigation
-- [ ] Friend interactions
-- [ ] Daily login flow
-- [ ] Tutorial skip sequences
-
-**Deliverable:** All AHK bot routines reimplemented in Go
-
-### 1.2 Template Refactoring 🚧
-
-**Priority:** HIGH
-**Status:** Not Started (0% complete)
-
-- [ ] Audit all template string references in code
-- [ ] Replace hardcoded strings with `templates.*` references
-- [ ] Ensure all templates defined in `pkg/templates/templates.go`
-- [ ] Verify all template PNGs exist in `bin/templates/`
-- [ ] Add missing templates from AHK version
-- [ ] Document template naming conventions
-- [ ] Create template testing utility
-
-**Deliverable:** Zero hardcoded template strings, all use definitions
-
-### 1.3 Error Handling & Recovery 🚧
-
-**Priority:** HIGH
-**Status:** Architecture in place (20% complete)
-
-- [x] Error monitor structure
-- [x] Health checker structure
-- [ ] Implement error handlers
-- [ ] Screen stuck detection
-- [ ] App crash recovery
-- [ ] Network error handling
-- [ ] ADB disconnection recovery
-- [ ] Automatic restart on critical errors
-- [ ] Error logging and reporting
-- [ ] Graceful degradation strategies
-
-**Deliverable:** Bot can recover from common errors without manual intervention
-
-### 1.4 Multi-Instance Coordination 🚧
-
-**Priority:** MEDIUM
-**Status:** Stubbed (10% complete)
-
-- [x] Coordinator package structure
-- [ ] Account pool management
-- [ ] Instance lifecycle coordination
-- [ ] Load balancing across instances
-- [ ] Synchronized operations (e.g., Wonder Pick groups)
-- [ ] Instance failure handling
-- [ ] Resource sharing (accounts, statistics)
-
-**Deliverable:** Manage 5+ instances simultaneously with shared account pool
-
-### 1.5 Testing & Validation ⏳
-
-**Priority:** MEDIUM
-**Status:** Not Started (0% complete)
-
-- [ ] Unit tests for action primitives
-- [ ] Unit tests for CV service
-- [ ] Integration tests for ADB operations
-- [ ] Mock implementations for testing
-- [ ] Template matching accuracy tests
-- [ ] Configuration validation tests
-- [ ] End-to-end bot flow tests
-- [ ] Performance benchmarks
-
-**Deliverable:** 60%+ test coverage with passing CI
+**Core Infrastructure:** ✅ Complete (Actions, Routines, Sentries, Registries)
+**Instance Management:** 🚧 In Progress (Bot Manager complete, GUI controls needed)
+**Domain Scripts:** 🚧 In Progress (Infrastructure ready, organization needed)
+**Production Ready:** ⏳ Planned
 
 ---
 
-## Phase 2: Enhanced Features
+## PHASE 1: Instance Lifecycle Controls (CRITICAL - Current Focus)
+**Goal:** Launch multiple configurable instances with controls to pause, stop, restart
 
-**Goal:** Improve upon AHK implementation with features not previously possible
+### 1.1 Individual Bot Control in GUI ⚡
+**Priority:** 🔴 CRITICAL
+**Status:** In Progress
+**Effort:** Medium (1-2 days)
 
-### 2.1 Card Recognition & Logging 📋
+**Current Gap:** Bot launcher only has "Launch All" and "Stop All" buttons. Cannot control individual bots.
 
-**Priority:** HIGH
-**Status:** Foundation in place (15% complete)
+**Implementation Tasks:**
+- [x] Analyze existing bot_launcher.go structure
+- [ ] Add per-bot status display (Idle/Running/Paused/Stopped/Completed)
+- [ ] Add individual Pause button for each bot
+- [ ] Add individual Resume button for each bot
+- [ ] Add individual Stop button for each bot
+- [ ] Wire buttons to existing RoutineController methods
+- [ ] Add visual state indicators (colors/icons)
+- [ ] Update status labels in real-time
 
-- [x] Card border detection structure
-- [x] Basic rarity detection
-- [ ] Accurate card rarity classification
-- [ ] Special card detection (Crown, Immersive, Shiny)
-- [ ] Card name recognition (requires OCR)
-- [ ] Card image extraction and storage
-- [ ] Duplicate detection
-- [ ] Collection tracking
-- [ ] Card statistics and analytics
+**Files to Modify:**
+- `internal/gui/bot_launcher.go` - Add individual control handlers
+- `internal/gui/controller.go` - Add state query endpoints
 
-**Deliverable:** Comprehensive card logging with accurate rarity detection
-
-### 2.2 OCR Engine 📋
-
-**Priority:** HIGH
-**Status:** Placeholder (0% complete)
-
-**Approach:** Pure Go implementation (no Tesseract dependency)
-
-- [ ] Character template generation
-- [ ] Character segmentation algorithm
-- [ ] Template matching for characters
-- [ ] Number recognition (shinedust count)
-- [ ] Text recognition (card names)
-- [ ] Error message detection
-- [ ] Multi-language support (EN, CN, JP, etc.)
-- [ ] OCR accuracy validation
-- [ ] Performance optimization
-
-**Deliverable:** Read shinedust counts and card names with 95%+ accuracy
-
-### 2.3 Database Integration 📋
-
-**Priority:** MEDIUM
-**Status:** Placeholder (0% complete)
-
-**Technology:** SQLite (embedded, no external dependencies)
-
-- [ ] Schema design (accounts, cards, runs, statistics)
-- [ ] Migration system
-- [ ] Account metadata storage
-- [ ] Card collection database
-- [ ] Run history and statistics
-- [ ] Performance metrics tracking
-- [ ] Query API for GUI
-- [ ] Backup and export functionality
-- [ ] Data pruning and archival
-
-**Deliverable:** Persistent storage for all bot data with query capabilities
-
-### 2.4 Advanced Pack Logic 📋
-
-**Priority:** MEDIUM
-**Status:** Not Started (0% complete)
-
-- [ ] Smart pack selection based on collection
-- [ ] Pack priority weighting
-- [ ] Event pack handling
-- [ ] Limited-time pack detection
-- [ ] Pack opening statistics
-- [ ] Optimal pack timing (daily resets, etc.)
-- [ ] Pack value estimation
-
-**Deliverable:** Intelligent pack opening based on user preferences and statistics
-
-### 2.5 Enhanced GUI 📋
-
-**Priority:** LOW
-**Status:** Basic implementation (40% complete)
-
-- [x] Multi-tab interface
-- [x] Real-time status updates
-- [x] Configuration editing
-- [ ] Live preview of emulator screens
-- [ ] Statistics dashboard with charts
-- [ ] Card collection browser
-- [ ] Advanced filtering and sorting
-- [ ] Export/import configurations
-- [ ] Theme customization
-- [ ] Notification center
-- [ ] Real-time logs with filtering
-
-**Deliverable:** Professional GUI with comprehensive monitoring and control
+**Benefit:** Full independent control over each bot instance.
 
 ---
 
-## Phase 3: Community Features
+### 1.2 Restart Functionality ⚡
+**Priority:** 🔴 CRITICAL
+**Status:** Not Started
+**Effort:** Small (4-8 hours)
 
-**Goal:** Enable collaboration and social features for Wonder Pick groups
+**Current Gap:** No way to restart a bot that has stopped or completed.
 
-### 3.1 Discord Integration 📋
+**Implementation Tasks:**
+- [ ] Add `lastRoutineName` field to Bot struct
+- [ ] Add `GetLastRoutine()` method to Bot
+- [ ] Implement `RestartBot(instance)` in Manager
+- [ ] Add Restart button to GUI per-bot controls
+- [ ] Handle restart of running bots (stop then restart)
 
-**Priority:** MEDIUM
-**Status:** Placeholder (0% complete)
+**Files to Modify:**
+- `internal/bot/bot.go` - Track last routine executed
+- `internal/bot/manager.go` - Add RestartBot() method
+- `internal/gui/bot_launcher.go` - Add restart handler and button
 
-- [ ] Webhook client implementation
-- [ ] Card pull notifications
-- [ ] Error/alert notifications
-- [ ] Wonder Pick group coordination
-- [ ] Showcase sharing
-- [ ] Statistics sharing
-- [ ] Bot status updates
-- [ ] Account export on S4T triggers
-- [ ] Rich embed formatting
-- [ ] Rate limiting and error handling
-
-**Deliverable:** Full Discord integration for notifications and coordination
-
-### 3.2 Save for Trade (S4T) Automation 📋
-
-**Priority:** MEDIUM
-**Status:** Configuration in place (20% complete)
-
-- [x] S4T configuration options
-- [ ] Trigger detection (valuable cards)
-- [ ] Account export on trigger
-- [ ] Discord notification with card details
-- [ ] Automatic account backup
-- [ ] S4T statistics tracking
-- [ ] Configurable S4T criteria
-- [ ] Manual S4T trigger option
-
-**Deliverable:** Automatic account preservation on valuable card pulls
-
-### 3.3 Wonder Pick Group Features 📋
-
-**Priority:** LOW
-**Status:** Not Started (0% complete)
-
-- [ ] Group coordination via Discord
-- [ ] Showcase timing coordination
-- [ ] Thanks tracking and reciprocation
-- [ ] Group statistics
-- [ ] Optimal Wonder Pick selection
-- [ ] Group event coordination
-
-**Deliverable:** Seamless Wonder Pick group collaboration
-
-### 3.4 Web Dashboard (Future) 📋
-
-**Priority:** LOW
-**Status:** Not Started (0% complete)
-
-- [ ] Web server with REST API
-- [ ] Real-time status monitoring
-- [ ] Remote bot control
-- [ ] Statistics visualization
-- [ ] Account management
-- [ ] Multi-user support
-- [ ] Mobile-responsive design
-
-**Deliverable:** Web-based dashboard for remote monitoring and control
+**Benefit:** Quick recovery without reconfiguration.
 
 ---
 
-## Phase 4: Polish & Production
+### 1.3 Real-time Status Updates ⚡
+**Priority:** 🟡 HIGH
+**Status:** Not Started
+**Effort:** Small (4-8 hours)
 
-**Goal:** Production-ready software with professional quality
+**Current Gap:** GUI doesn't update automatically when bot state changes.
 
-### 4.1 Documentation Completion 📋
+**Implementation Tasks:**
+- [ ] Add status polling goroutine per bot config
+- [ ] Poll bot state every 500ms
+- [ ] Update status labels automatically
+- [ ] Update button enabled/disabled states based on state
+- [ ] Add status change callbacks to RoutineController (optional enhancement)
 
-**Priority:** MEDIUM
-**Status:** Foundation complete (60% complete)
+**Files to Modify:**
+- `internal/gui/bot_launcher.go` - Add polling mechanism
+- `internal/bot/routine_state.go` - Optional: Add state change callbacks
 
-- [x] README.md
-- [x] CONTRIBUTING.md
-- [x] ARCHITECTURE.md
-- [x] SETUP.md
-- [x] API.md
-- [ ] Video tutorials
-- [ ] Troubleshooting guide expansion
-- [ ] FAQ section
-- [ ] Example configurations
-- [ ] Migration guide from AHK
-- [ ] Performance tuning guide
+**Benefit:** Real-time visibility without manual refresh.
 
-**Deliverable:** Comprehensive documentation for users and developers
-
-### 4.2 Cross-Platform Support 📋
-
-**Priority:** LOW
-**Status:** Windows only (20% complete)
-
-- [x] Windows support (primary)
-- [ ] Linux testing and fixes
-- [ ] macOS testing and fixes
-- [ ] Multi-platform CV capture implementations
-- [ ] Platform-specific installers
-- [ ] Docker support for headless operation
-
-**Deliverable:** Verified support for Windows, Linux, and macOS
-
-### 4.3 Performance Optimization 📋
-
-**Priority:** MEDIUM
-**Status:** Not Started (0% complete)
-
-- [ ] Template matching performance profiling
-- [ ] Frame capture optimization
-- [ ] Memory usage optimization
-- [ ] CPU usage reduction
-- [ ] Cache tuning
-- [ ] Parallel processing where applicable
-- [ ] Startup time optimization
-
-**Deliverable:** 50%+ performance improvement over baseline
-
-### 4.4 Security & Privacy 📋
-
-**Priority:** HIGH
-**Status:** Basic measures (30% complete)
-
-- [x] Account XML gitignore protection
-- [ ] Encryption for stored accounts
-- [ ] Secure Discord webhook storage
-- [ ] Privacy-focused logging (no sensitive data)
-- [ ] Account data sanitization for sharing
-- [ ] Security audit
-- [ ] Responsible disclosure policy
-
-**Deliverable:** Secure handling of all sensitive data
-
-### 4.5 Packaging & Distribution 📋
-
-**Priority:** MEDIUM
-**Status:** Not Started (0% complete)
-
-- [ ] Automated build pipeline (CI/CD)
-- [ ] Windows installer (.msi or .exe)
-- [ ] Linux packages (.deb, .rpm)
-- [ ] macOS package (.dmg)
-- [ ] Portable/standalone builds
-- [ ] Auto-update functionality
-- [ ] Release notes automation
-- [ ] Version management
-
-**Deliverable:** Professional installers and distribution system
+**Milestone:** End of Week 1 - Can launch, pause, resume, stop, restart individual bots with real-time status
 
 ---
 
-## Deprecation Timeline: AHK Bot
+## PHASE 2: Bot Health & Resilience (HIGH Priority)
+**Goal:** Make bots robust and self-recovering
 
-### Milestone 1: Feature Parity (Phase 1 Complete)
-- All AHK bot routines reimplemented
-- Error handling matches or exceeds AHK
-- Multi-instance support stable
+### 2.1 Health Monitoring Implementation 🏥
+**Priority:** 🟡 HIGH
+**Status:** Stubbed (health_checker.go exists)
+**Effort:** Medium (1-2 days)
 
-**Target:** Q2 2025
+**Implementation Tasks:**
+- [ ] Implement CheckADBConnection() - verify ADB responsive
+- [ ] Implement CheckDeviceResponsive() - verify device alive
+- [ ] Add StartMonitoring() with configurable interval
+- [ ] Add onUnhealthy callback system
+- [ ] Integrate with Bot.Initialize()
+- [ ] Log health check failures
 
-### Milestone 2: Production Release (Phase 4 Complete)
-- Comprehensive testing complete
-- Documentation complete
-- Installers available
-- Community adoption begins
+**Files to Modify:**
+- `internal/bot/health_checker.go` - Implement all checks
+- `internal/bot/bot.go` - Start health monitoring
 
-**Target:** Q3 2025
-
-### Milestone 3: AHK Deprecation
-- Official announcement of AHK bot deprecation
-- Migration guide published
-- Support for AHK version ends
-- Archive AHK codebase
-
-**Target:** Q4 2025
+**Benefit:** Automatic detection of disconnects and frozen devices.
 
 ---
 
-## Success Metrics
+### 2.2 Auto-Restart on Failure 🔄
+**Priority:** 🟡 HIGH
+**Status:** Not Started
+**Effort:** Small (4 hours)
 
-### Technical Metrics
-- [ ] 60%+ test coverage
-- [ ] 95%+ uptime for 24-hour runs
-- [ ] <5% error rate on actions
-- [ ] <100ms average template matching time
-- [ ] Support for 10+ simultaneous instances
+**Implementation Tasks:**
+- [ ] Add RestartPolicy struct (enabled, maxRetries, backoffDelay)
+- [ ] Implement ExecuteWithRestart() in Manager
+- [ ] Add restart policy to bot configuration
+- [ ] Add retry counter and exponential backoff
+- [ ] Log restart attempts
 
-### Community Metrics
-- [ ] 100+ active users
-- [ ] 10+ contributors
-- [ ] 50+ GitHub stars
-- [ ] Active Discord community
+**Files to Modify:**
+- `internal/bot/manager.go` - Add restart policy logic
+- `internal/bot/config.go` - Add restart policy config
 
-### Feature Completion
-- [ ] 100% AHK feature parity
-- [ ] Card recognition implemented
-- [ ] Database logging functional
-- [ ] Discord integration complete
+**Benefit:** Resilience to transient failures.
 
 ---
 
-## Contributing to Roadmap
+### 2.3 Sentry Activity Monitoring 👁️
+**Priority:** 🟢 MEDIUM
+**Status:** Not Started
+**Effort:** Small (4-8 hours)
 
-We welcome community input on priorities and feature requests!
+**Implementation Tasks:**
+- [ ] Add SentryMetrics struct to sentry_engine.go
+- [ ] Track execution count, success/failure, timing
+- [ ] Add GetMetrics() method to SentryEngine
+- [ ] Create GUI endpoint for sentry metrics
+- [ ] Display sentry status in bot launcher (expandable section)
 
-**Process:**
-1. Open a GitHub Discussion for major features
-2. Create an issue for specific tasks
-3. Comment on existing roadmap items
-4. Submit PRs for roadmap tasks
+**Files to Modify:**
+- `internal/actions/sentry_engine.go` - Add metrics collection
+- `internal/gui/bot_launcher.go` - Display sentry metrics
 
-**Current High-Priority Help Needed:**
-- Template refactoring (replace hardcoded strings)
-- Unit test writing
-- Action library completion
-- Cross-platform testing
-- Documentation improvements
+**Benefit:** Debug sentry behavior and verify sentries are working.
 
----
-
-## Version Milestones
-
-- **v0.1.0** - Initial prototype (current)
-- **v0.2.0** - Action library complete
-- **v0.3.0** - Template refactoring complete
-- **v0.4.0** - Error handling complete
-- **v0.5.0** - Multi-instance coordination
-- **v1.0.0** - Feature parity with AHK (Phase 1 complete)
-- **v1.5.0** - Card recognition and OCR (Phase 2)
-- **v2.0.0** - Discord integration (Phase 3)
-- **v2.5.0** - Production polish (Phase 4)
-- **v3.0.0** - Enhanced functionality
+**Milestone:** End of Week 2 - Bots recover from failures, health monitoring active
 
 ---
 
-**Last Updated:** 2025-01-05
+## PHASE 3: Domain Script Organization (MEDIUM Priority)
+**Goal:** Make development of domain-specific scripts easier
+
+### 3.1 Routine Subdirectory Support 📁
+**Priority:** 🟢 MEDIUM
+**Status:** Not Started
+**Effort:** Small (4 hours)
+
+**Implementation Tasks:**
+- [ ] Add recursive directory scanning to routine_registry.go
+- [ ] Support namespacing (e.g., "combat/battle_loop")
+- [ ] Update GUI to show routines grouped by folder
+- [ ] Update documentation
+
+**Files to Modify:**
+- `internal/actions/routine_registry.go` - Recursive scanning
+
+**Benefit:** Organize as `routines/combat/`, `routines/farming/`, etc.
+
+---
+
+### 3.2 Routine Library Scaffolding 📚
+**Priority:** 🟢 MEDIUM
+**Status:** Not Started
+**Effort:** Small (2-4 hours)
+
+**Implementation Tasks:**
+- [ ] Create domain folders (combat/, farming/, navigation/, error_handling/)
+- [ ] Add README.md to each domain with conventions
+- [ ] Create _template.yaml starter files
+- [ ] Move existing routines to appropriate domains
+- [ ] Document naming conventions
+
+**Benefit:** Faster development with clear patterns and examples.
+
+**Milestone:** End of Week 3 - Organized routine library ready for Pokemon TCG Pocket scripts
+
+---
+
+## PHASE 4: Developer Experience (LOW Priority - Polish)
+**Goal:** Improve development workflow
+
+### 4.1 Hot Reload in GUI 🔄
+**Priority:** 🟢 LOW
+**Effort:** Very Small (2 hours)
+
+- [ ] Add "Reload Routines" button to GUI (handler already exists!)
+- [ ] Add "Reload Templates" button to GUI (handler already exists!)
+- [ ] Add visual feedback on reload
+
+---
+
+### 4.2 Variable Inspector 🔍
+**Priority:** 🟢 LOW
+**Effort:** Small (4 hours)
+
+- [ ] Add endpoint to get bot's variable store
+- [ ] Display variables in expandable section per bot
+- [ ] Update in real-time during execution
+
+---
+
+### 4.3 Config Editor GUI 📝
+**Priority:** 🟢 LOW
+**Effort:** Medium (1-2 days)
+
+- [ ] Generate forms from routine config definitions
+- [ ] Allow editing config values before launch
+- [ ] Validate inputs against constraints
+
+---
+
+## COMPLETED FEATURES ✅
+
+### Core Architecture (Complete)
+- ✅ **41 Actions** - Click, Swipe, CV, Loops, Variables, Conditionals
+- ✅ **Routine System** - YAML-based with eager loading registry
+- ✅ **Sentry Supervision** - Parallel monitoring routines
+- ✅ **Template Registry** - Image caching with YAML definitions
+- ✅ **Variable System** - Per-instance stores with interpolation
+- ✅ **Config System** - User-configurable parameters with overrides
+- ✅ **Multi-Instance Bot Manager** - Shared registries architecture
+- ✅ **Routine Controller** - State machine (Idle/Running/Paused/Stopped/Completed)
+- ✅ **Routine Composition** - RunRoutine with config overrides
+- ✅ **Comprehensive Documentation** - 14+ markdown docs
+
+### Registration Systems (Complete)
+- ✅ Action Registry - 41 actions mapped
+- ✅ Template Registry - Dynamic YAML loading with caching
+- ✅ Routine Registry - Metadata, validation, tag filtering
+
+### Recent Implementations (Last 7 Days)
+- ✅ Config overrides for RunRoutine
+- ✅ Variable interpolation (`${variable_name}`)
+- ✅ Nested routine execution
+- ✅ Enhanced validation
+- ✅ Sentry structures and engine
+
+---
+
+## ARCHITECTURE STRENGTHS
+
+✅ **Build-Execute Pattern** - Routines built once, executed many times
+✅ **Shared Registries** - Memory efficient for multi-instance
+✅ **Thread-Safe State Management** - Atomic operations + mutexes
+✅ **Extensible Action System** - Easy to add new actions
+✅ **Clean Separation** - Instance state vs shared resources
+✅ **Comprehensive Validation** - Early error detection
+
+---
+
+## NON-PRIORITIES (Not Needed for Prototype)
+
+These are interesting but NOT needed for a functioning prototype:
+
+- ❌ Bot Coordinator account injection (stubbed, not critical)
+- ❌ Routine versioning
+- ❌ Template visual editor
+- ❌ Routine debugger (step-through)
+- ❌ Routine marketplace
+- ❌ Load balancing
+- ❌ Circular sentry dependency detection
+- ❌ Discord integration
+- ❌ OCR engine
+- ❌ Database logging
+- ❌ Card recognition
+
+---
+
+## RECOMMENDED IMPLEMENTATION SCHEDULE
+
+### Week 1: Minimum Viable Prototype ⚡
+**Goal:** Independent bot control with full lifecycle management
+
+- **Day 1-2:** Individual bot controls in GUI (#1.1) - CRITICAL
+- **Day 3:** Restart functionality (#1.2) - CRITICAL
+- **Day 4:** Status polling/real-time updates (#1.3) - HIGH
+- **Day 5:** Testing multi-instance scenarios, bug fixes
+
+**Deliverable:** Can launch 5 bots, independently pause/resume/stop/restart each one
+
+---
+
+### Week 2: Robustness 🏥
+**Goal:** Bots recover from failures automatically
+
+- **Day 6-7:** Health monitoring implementation (#2.1)
+- **Day 8:** Auto-restart on failure (#2.2)
+- **Day 9:** Sentry activity monitoring (#2.3)
+- **Day 10:** Testing and refinement
+
+**Deliverable:** Bots recover from ADB disconnects, restart on errors, sentry visibility
+
+---
+
+### Week 3: Domain Scripts 📚
+**Goal:** Organized script library for Pokemon TCG Pocket
+
+- **Day 11:** Routine subdirectory support (#3.1)
+- **Day 12-13:** Create domain script libraries (#3.2)
+- **Day 14-15:** Write domain-specific routines (Pokemon TCG Pocket)
+
+**Deliverable:** Organized routine library with combat, farming, navigation scripts
+
+---
+
+### Week 4+: Polish ✨
+**Goal:** Developer experience improvements
+
+- Hot reload buttons
+- Variable inspector
+- Config editor GUI
+- Additional domain scripts
+
+---
+
+## SUCCESS METRICS
+
+### Week 1 Success Criteria
+- [ ] Launch 6 bot instances simultaneously
+- [ ] Pause bot #2 while others continue running
+- [ ] Resume bot #2 without affecting others
+- [ ] Stop bot #4 individually
+- [ ] Restart bot #1 with same routine
+- [ ] Real-time status updates without manual refresh
+
+### Week 2 Success Criteria
+- [ ] Bots automatically detect ADB disconnects
+- [ ] Bots restart after transient errors (3 retry max)
+- [ ] Sentry execution metrics visible in GUI
+- [ ] 24-hour stability test with 5 bots
+
+### Week 3 Success Criteria
+- [ ] Routines organized in domain folders
+- [ ] Pokemon TCG Pocket specific routines created
+- [ ] Clear conventions documented
+- [ ] Template routines for common patterns
+
+---
+
+## KNOWN GAPS (Documented for Future)
+
+### Critical for Prototype
+1. ❌ Individual bot GUI controls
+2. ❌ Restart mechanism
+3. ❌ Real-time status polling
+
+### High Priority (Post-Prototype)
+4. ❌ Health monitoring implementation
+5. ❌ Auto-restart policy
+6. ❌ Sentry metrics
+
+### Medium Priority
+7. ❌ Subdirectory support for routines
+8. ❌ Domain script organization
+
+### Low Priority
+9. ❌ Hot reload GUI buttons
+10. ❌ Variable inspector
+11. ❌ Config editor GUI
+
+---
+
+## VERSION MILESTONES
+
+- **v0.1.0** - Core infrastructure complete ✅ (CURRENT)
+- **v0.2.0** - Individual bot controls (Week 1)
+- **v0.3.0** - Health & resilience (Week 2)
+- **v0.4.0** - Domain script library (Week 3)
+- **v0.5.0** - Developer experience polish (Week 4+)
+- **v1.0.0** - Functioning prototype ready for domain development
+
+---
+
+## LEGACY ROADMAP ITEMS (Deferred)
+
+The following items from the original roadmap are deferred until after the functioning prototype is complete:
+
+- Feature parity with AHK bot (Phase 1)
+- Card recognition & logging (Phase 2)
+- OCR engine (Phase 2)
+- Database integration (Phase 2)
+- Discord integration (Phase 3)
+- Testing & validation (comprehensive)
+- Cross-platform support
+- Performance optimization
+- Security & privacy hardening
+- Packaging & distribution
+
+These will be revisited once the core prototype is functioning and domain-specific scripts are being developed.
+
+---
+
+**Last Updated:** 2025-11-08
 **Current Version:** v0.1.0-prototype
-**Next Milestone:** v0.2.0 - Action Library Complete
+**Next Milestone:** v0.2.0 - Individual Bot Controls (Week 1)
+**Focus:** Phase 1 - Instance Lifecycle Controls

@@ -2,10 +2,14 @@ package gui
 
 import (
 	"fmt"
+	"image/color"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
@@ -33,6 +37,11 @@ type BotLauncherTab struct {
 	runningBots       map[int]*bot.Bot
 	availableRoutines []string
 	displayToFilename map[string]string // Maps display text -> filename
+
+	// Status polling
+	pollingActive bool
+	pollingStop   chan struct{}
+	pollingWg     sync.WaitGroup
 }
 
 // BotLaunchConfig represents configuration for a single bot instance
@@ -40,7 +49,13 @@ type BotLaunchConfig struct {
 	instance        int
 	routineSelect   *widget.Select
 	statusLabel     *widget.Label
+	statusIndicator *canvas.Circle // Visual state indicator
 	selectedRoutine string
+	// Individual control buttons
+	pauseBtn   *widget.Button
+	resumeBtn  *widget.Button
+	stopBtn    *widget.Button
+	restartBtn *widget.Button
 }
 
 // NewBotLauncherTab creates a new bot launcher tab
@@ -49,6 +64,7 @@ func NewBotLauncherTab(ctrl *Controller) *BotLauncherTab {
 		controller:        ctrl,
 		runningBots:       make(map[int]*bot.Bot),
 		displayToFilename: make(map[string]string),
+		pollingStop:       make(chan struct{}),
 	}
 }
 
@@ -242,12 +258,40 @@ func (t *BotLauncherTab) createBotConfig(instance int) *BotLaunchConfig {
 		routineSelect.SetSelected(t.availableRoutines[0])
 	}
 
-	return &BotLaunchConfig{
+	// Create status indicator circle (gray initially)
+	statusIndicator := canvas.NewCircle(color.RGBA{R: 128, G: 128, B: 128, A: 255})
+	statusIndicator.Resize(fyne.NewSize(12, 12))
+
+	config := &BotLaunchConfig{
 		instance:        instance,
 		routineSelect:   routineSelect,
 		statusLabel:     widget.NewLabel("Ready"),
+		statusIndicator: statusIndicator,
 		selectedRoutine: "<none>",
 	}
+
+	// Create individual control buttons (disabled initially)
+	config.pauseBtn = widget.NewButton("Pause", func() {
+		t.pauseBot(instance)
+	})
+	config.pauseBtn.Disable()
+
+	config.resumeBtn = widget.NewButton("Resume", func() {
+		t.resumeBot(instance)
+	})
+	config.resumeBtn.Disable()
+
+	config.stopBtn = widget.NewButton("Stop", func() {
+		t.stopBot(instance)
+	})
+	config.stopBtn.Disable()
+
+	config.restartBtn = widget.NewButton("Restart", func() {
+		t.restartBot(instance)
+	})
+	config.restartBtn.Disable()
+
+	return config
 }
 
 // createBotConfigCard creates a UI card for a bot configuration
@@ -260,12 +304,35 @@ func (t *BotLauncherTab) createBotConfigCard(config *BotLaunchConfig) fyne.Canva
 
 	routineLabel := widget.NewLabel("Routine:")
 
+	// Control buttons row
+	controlButtons := container.NewHBox(
+		config.pauseBtn,
+		config.resumeBtn,
+		config.stopBtn,
+		config.restartBtn,
+	)
+
+	// Routine selection row
+	routineRow := container.NewBorder(nil, nil, routineLabel, nil, config.routineSelect)
+
+	// Status row with indicator and label
+	statusRow := container.NewHBox(
+		config.statusIndicator,
+		config.statusLabel,
+	)
+
+	// Bottom section with status and controls
+	bottomSection := container.NewVBox(
+		statusRow,
+		controlButtons,
+	)
+
 	card := container.NewBorder(
 		instanceLabel,
-		config.statusLabel,
-		routineLabel,
+		bottomSection,
 		nil,
-		config.routineSelect,
+		nil,
+		routineRow,
 	)
 
 	return container.NewPadded(card)
@@ -341,6 +408,9 @@ func (t *BotLauncherTab) launchAllBots() {
 	t.setAllBtn.Disable()
 
 	t.statusLabel.SetText(fmt.Sprintf("Launched %d/%d bots successfully", successCount, len(t.botConfigs)))
+
+	// Start status polling for real-time updates
+	t.startStatusPolling()
 }
 
 // launchBot launches a single bot instance
@@ -384,11 +454,17 @@ func (t *BotLauncherTab) launchBot(config *BotLaunchConfig) error {
 	}
 	t.safeLog(LogLevelInfo, config.instance, fmt.Sprintf("Launched with routine: %s", displayName))
 
+	// Enable control buttons for this bot
+	t.updateBotButtons(config.instance)
+
 	return nil
 }
 
 // stopAllBots stops all running bots
 func (t *BotLauncherTab) stopAllBots() {
+	// Stop status polling first
+	t.stopStatusPolling()
+
 	// Stop coordinator
 	if t.coordinator != nil {
 		t.coordinator.StopAll()
@@ -402,9 +478,13 @@ func (t *BotLauncherTab) stopAllBots() {
 	// Clear running bots
 	t.runningBots = make(map[int]*bot.Bot)
 
-	// Update UI state
+	// Update UI state for all bot configs
 	for _, config := range t.botConfigs {
 		config.statusLabel.SetText("Stopped")
+		config.pauseBtn.Disable()
+		config.resumeBtn.Disable()
+		config.stopBtn.Disable()
+		config.restartBtn.Disable()
 	}
 
 	t.launchBtn.Enable()
@@ -422,7 +502,225 @@ func (t *BotLauncherTab) safeLog(level LogLevel, instance int, message string) {
 	}
 }
 
+// pauseBot pauses a specific bot instance
+func (t *BotLauncherTab) pauseBot(instance int) {
+	b, exists := t.runningBots[instance]
+	if !exists {
+		t.safeLog(LogLevelWarning, instance, "Cannot pause: bot not running")
+		return
+	}
+
+	if b.RoutineController().Pause() {
+		t.safeLog(LogLevelInfo, instance, "Paused")
+		t.updateBotButtons(instance)
+	} else {
+		t.safeLog(LogLevelWarning, instance, "Cannot pause: bot not in running state")
+	}
+}
+
+// resumeBot resumes a specific bot instance
+func (t *BotLauncherTab) resumeBot(instance int) {
+	b, exists := t.runningBots[instance]
+	if !exists {
+		t.safeLog(LogLevelWarning, instance, "Cannot resume: bot not running")
+		return
+	}
+
+	if b.RoutineController().Resume() {
+		t.safeLog(LogLevelInfo, instance, "Resumed")
+		t.updateBotButtons(instance)
+	} else {
+		t.safeLog(LogLevelWarning, instance, "Cannot resume: bot not in paused state")
+	}
+}
+
+// stopBot stops a specific bot instance
+func (t *BotLauncherTab) stopBot(instance int) {
+	b, exists := t.runningBots[instance]
+	if !exists {
+		t.safeLog(LogLevelWarning, instance, "Bot not running")
+		return
+	}
+
+	b.RoutineController().ForceStop()
+	t.safeLog(LogLevelInfo, instance, "Stopped")
+
+	// Update button states
+	t.updateBotButtons(instance)
+}
+
+// restartBot restarts a specific bot instance with its last routine
+func (t *BotLauncherTab) restartBot(instance int) {
+	// Get the bot and its last routine
+	lastRoutine, err := t.manager.RestartBot(instance)
+	if err != nil {
+		t.safeLog(LogLevelError, instance, fmt.Sprintf("Cannot restart: %v", err))
+		return
+	}
+
+	// Get the bot instance
+	b, exists := t.runningBots[instance]
+	if !exists {
+		t.safeLog(LogLevelError, instance, "Cannot restart: bot not found")
+		return
+	}
+
+	t.safeLog(LogLevelInfo, instance, fmt.Sprintf("Restarting with routine: %s", lastRoutine))
+
+	// Create a new request for the coordinator
+	request := &coordinator.BotRequest{
+		Instance:    instance,
+		RoutineName: lastRoutine,
+		Bot:         b,
+	}
+
+	// Submit to coordinator for execution
+	if err := t.coordinator.SubmitBotRequest(request); err != nil {
+		t.safeLog(LogLevelError, instance, fmt.Sprintf("Failed to restart: %v", err))
+		return
+	}
+
+	// Update button states
+	t.updateBotButtons(instance)
+}
+
+// updateBotButtons updates button states based on bot's routine controller state
+func (t *BotLauncherTab) updateBotButtons(instance int) {
+	// Find the config for this instance
+	var config *BotLaunchConfig
+	for _, cfg := range t.botConfigs {
+		if cfg.instance == instance {
+			config = cfg
+			break
+		}
+	}
+	if config == nil {
+		return
+	}
+
+	b, exists := t.runningBots[instance]
+	if !exists {
+		// Bot not running - all buttons disabled
+		config.pauseBtn.Disable()
+		config.resumeBtn.Disable()
+		config.stopBtn.Disable()
+		config.restartBtn.Disable()
+		config.statusLabel.SetText("Not Running")
+		config.statusIndicator.FillColor = color.RGBA{R: 128, G: 128, B: 128, A: 255} // Gray
+		config.statusIndicator.Refresh()
+		return
+	}
+
+	state := b.RoutineController().GetState()
+	hasLastRoutine := b.GetLastRoutine() != ""
+
+	switch state {
+	case bot.StateIdle:
+		config.pauseBtn.Disable()
+		config.resumeBtn.Disable()
+		config.stopBtn.Disable()
+		// Enable restart if there's a last routine
+		if hasLastRoutine {
+			config.restartBtn.Enable()
+		} else {
+			config.restartBtn.Disable()
+		}
+		config.statusLabel.SetText("Idle")
+		config.statusIndicator.FillColor = color.RGBA{R: 200, G: 200, B: 200, A: 255} // Light gray
+		config.statusIndicator.Refresh()
+
+	case bot.StateRunning:
+		config.pauseBtn.Enable()
+		config.resumeBtn.Disable()
+		config.stopBtn.Enable()
+		config.restartBtn.Disable() // Can't restart while running
+		config.statusLabel.SetText("Running")
+		config.statusIndicator.FillColor = color.RGBA{R: 0, G: 200, B: 0, A: 255} // Green
+		config.statusIndicator.Refresh()
+
+	case bot.StatePaused:
+		config.pauseBtn.Disable()
+		config.resumeBtn.Enable()
+		config.stopBtn.Enable()
+		config.restartBtn.Disable() // Can't restart while paused
+		config.statusLabel.SetText("Paused")
+		config.statusIndicator.FillColor = color.RGBA{R: 255, G: 165, B: 0, A: 255} // Orange
+		config.statusIndicator.Refresh()
+
+	case bot.StateStopped:
+		config.pauseBtn.Disable()
+		config.resumeBtn.Disable()
+		config.stopBtn.Disable()
+		// Enable restart if there's a last routine
+		if hasLastRoutine {
+			config.restartBtn.Enable()
+		} else {
+			config.restartBtn.Disable()
+		}
+		config.statusLabel.SetText("Stopped")
+		config.statusIndicator.FillColor = color.RGBA{R: 200, G: 0, B: 0, A: 255} // Red
+		config.statusIndicator.Refresh()
+
+	case bot.StateCompleted:
+		config.pauseBtn.Disable()
+		config.resumeBtn.Disable()
+		config.stopBtn.Disable()
+		// Enable restart if there's a last routine
+		if hasLastRoutine {
+			config.restartBtn.Enable()
+		} else {
+			config.restartBtn.Disable()
+		}
+		config.statusLabel.SetText("Completed")
+		config.statusIndicator.FillColor = color.RGBA{R: 0, G: 100, B: 200, A: 255} // Blue
+		config.statusIndicator.Refresh()
+	}
+}
+
+// startStatusPolling starts polling bot status for all configured bots
+func (t *BotLauncherTab) startStatusPolling() {
+	if t.pollingActive {
+		return // Already polling
+	}
+
+	t.pollingActive = true
+	t.pollingWg.Add(1)
+
+	go func() {
+		defer t.pollingWg.Done()
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-t.pollingStop:
+				return
+			case <-ticker.C:
+				// Poll status for all bot configs
+				for _, config := range t.botConfigs {
+					t.updateBotButtons(config.instance)
+				}
+			}
+		}
+	}()
+}
+
+// stopStatusPolling stops the status polling goroutine
+func (t *BotLauncherTab) stopStatusPolling() {
+	if !t.pollingActive {
+		return
+	}
+
+	t.pollingActive = false
+	close(t.pollingStop)
+	t.pollingWg.Wait()
+
+	// Recreate the channel for next time
+	t.pollingStop = make(chan struct{})
+}
+
 // Cleanup performs cleanup when the tab is closed
 func (t *BotLauncherTab) Cleanup() {
+	t.stopStatusPolling()
 	t.stopAllBots()
 }

@@ -163,6 +163,9 @@ func (c *BotCoordinator) injectAccount(request *BotRequest) error {
 
 // executeRoutine executes a specific routine on the bot
 func (c *BotCoordinator) executeRoutine(request *BotRequest) error {
+	// Track the routine name for restart capability
+	request.Bot.SetLastRoutine(request.RoutineName)
+
 	// Get routine from bot's registry
 	routineBuilder, err := request.Bot.Routines().Get(request.RoutineName)
 	if err != nil {
