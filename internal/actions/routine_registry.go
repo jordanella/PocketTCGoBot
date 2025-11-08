@@ -93,7 +93,7 @@ func (rr *RoutineRegistry) WithTemplateRegistry(registry TemplateRegistryInterfa
 	return rr
 }
 
-// loadAllRoutines discovers and loads all routine files
+// loadAllRoutines discovers and loads all routine files recursively
 func (rr *RoutineRegistry) loadAllRoutines() {
 	// Check if the routines folder exists
 	if _, err := os.Stat(rr.routinesPath); os.IsNotExist(err) {
@@ -101,27 +101,45 @@ func (rr *RoutineRegistry) loadAllRoutines() {
 		return
 	}
 
-	// Scan for .yaml and .yml files
-	patterns := []string{
-		filepath.Join(rr.routinesPath, "*.yaml"),
-		filepath.Join(rr.routinesPath, "*.yml"),
-	}
-
-	for _, pattern := range patterns {
-		matches, err := filepath.Glob(pattern)
+	// Walk the directory tree recursively
+	err := filepath.Walk(rr.routinesPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			continue
+			return err
 		}
 
-		for _, path := range matches {
-			filename := filepath.Base(path)
-			// Remove extension to get routine filename
-			ext := filepath.Ext(filename)
-			routineFilename := filename[:len(filename)-len(ext)]
-
-			// Load and validate the routine
-			rr.loadRoutine(routineFilename, path)
+		// Skip directories
+		if info.IsDir() {
+			return nil
 		}
+
+		// Check if file has .yaml or .yml extension
+		ext := filepath.Ext(path)
+		if ext != ".yaml" && ext != ".yml" {
+			return nil
+		}
+
+		// Calculate the routine name relative to the base routines path
+		// This creates namespace support (e.g., "combat/battle_loop")
+		relPath, err := filepath.Rel(rr.routinesPath, path)
+		if err != nil {
+			log.Printf("[RoutineRegistry] Failed to calculate relative path for %s: %v", path, err)
+			return nil
+		}
+
+		// Remove extension to get routine name
+		routineName := relPath[:len(relPath)-len(ext)]
+
+		// Normalize path separators to forward slashes for consistency
+		routineName = filepath.ToSlash(routineName)
+
+		// Load and validate the routine
+		rr.loadRoutine(routineName, path)
+
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("[RoutineRegistry] Error walking routine directory: %v", err)
 	}
 }
 
@@ -412,4 +430,53 @@ func (rr *RoutineRegistry) Reload() error {
 	log.Printf("[RoutineRegistry] Reloaded %d valid routine(s), %d invalid routine(s)", validCount, invalidCount)
 
 	return nil
+}
+
+// ListByNamespace returns routines grouped by their namespace (folder)
+// Returns a map of namespace -> []routine names
+// Top-level routines are under the "" (empty string) namespace
+func (rr *RoutineRegistry) ListByNamespace() map[string][]string {
+	rr.mu.RLock()
+	defer rr.mu.RUnlock()
+
+	namespaces := make(map[string][]string)
+
+	for filename := range rr.routines {
+		// Extract namespace from filename (everything before the last slash)
+		namespace := ""
+		if idx := filepath.ToSlash(filename); filepath.Base(idx) != idx {
+			// Has a namespace
+			namespace = filepath.Dir(filepath.ToSlash(filename))
+		}
+
+		namespaces[namespace] = append(namespaces[namespace], filename)
+	}
+
+	// Sort each namespace's routines
+	for ns := range namespaces {
+		sort.Strings(namespaces[ns])
+	}
+
+	return namespaces
+}
+
+// GetNamespace extracts the namespace from a routine name
+// Returns empty string for top-level routines
+func (rr *RoutineRegistry) GetNamespace(filename string) string {
+	// Normalize to forward slashes
+	normalized := filepath.ToSlash(filename)
+
+	// If no slash found, it's top-level
+	if filepath.Base(normalized) == normalized {
+		return ""
+	}
+
+	// Return everything before the last slash
+	return filepath.Dir(normalized)
+}
+
+// GetBaseName extracts just the base name from a routine (without namespace)
+// e.g., "combat/battle_loop" -> "battle_loop"
+func (rr *RoutineRegistry) GetBaseName(filename string) string {
+	return filepath.Base(filepath.ToSlash(filename))
 }

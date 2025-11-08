@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -161,6 +162,7 @@ func (t *BotLauncherTab) initializeManager() {
 }
 
 // loadAvailableRoutines loads available routines from the shared registry
+// Groups routines by namespace (folder) for better organization
 func (t *BotLauncherTab) loadAvailableRoutines() {
 	t.availableRoutines = []string{"<none>"}
 	t.displayToFilename = make(map[string]string)
@@ -168,25 +170,70 @@ func (t *BotLauncherTab) loadAvailableRoutines() {
 
 	// If we have a manager with a routine registry, use it
 	if t.manager != nil && t.manager.RoutineRegistry() != nil {
-		filenames := t.manager.RoutineRegistry().ListAvailable()
+		registry := t.manager.RoutineRegistry()
 
-		// Build display strings: "DisplayName (filename)"
-		for _, filename := range filenames {
-			metaInterface := t.manager.RoutineRegistry().GetMetadata(filename)
-			// Type assert to access fields (GetMetadata returns interface{} for compatibility)
-			meta, ok := metaInterface.(*actions.RoutineMetadata)
-			if !ok {
-				continue // Skip if type assertion fails
+		// Type assert to access the ListByNamespace method
+		if rr, ok := registry.(*actions.RoutineRegistry); ok {
+			// Get routines grouped by namespace
+			namespaces := rr.ListByNamespace()
+
+			// Sort namespace names for consistent ordering
+			var sortedNamespaces []string
+			for ns := range namespaces {
+				sortedNamespaces = append(sortedNamespaces, ns)
 			}
-			displayText := fmt.Sprintf("%s (%s)", meta.DisplayName, meta.Filename)
+			sort.Strings(sortedNamespaces)
 
-			// Check if invalid
-			if err := t.manager.RoutineRegistry().GetValidationError(filename); err != nil {
-				displayText = fmt.Sprintf("⚠️ %s [INVALID]", displayText)
+			// Add routines grouped by namespace
+			for _, namespace := range sortedNamespaces {
+				routines := namespaces[namespace]
+
+				// Add namespace header if not top-level
+				if namespace != "" {
+					header := fmt.Sprintf("── %s ──", namespace)
+					t.availableRoutines = append(t.availableRoutines, header)
+					// Map header to empty string (not selectable in practice)
+					t.displayToFilename[header] = ""
+				}
+
+				// Add routines in this namespace
+				for _, filename := range routines {
+					metaInterface := registry.GetMetadata(filename)
+					meta, ok := metaInterface.(*actions.RoutineMetadata)
+					if !ok {
+						continue
+					}
+
+					// For namespaced routines, show just the base name + full path
+					displayText := fmt.Sprintf("%s (%s)", meta.DisplayName, filename)
+
+					// Check if invalid
+					if err := registry.GetValidationError(filename); err != nil {
+						displayText = fmt.Sprintf("⚠️ %s [INVALID]", displayText)
+					}
+
+					t.availableRoutines = append(t.availableRoutines, displayText)
+					t.displayToFilename[displayText] = filename
+				}
 			}
+		} else {
+			// Fallback: flat list if not using RoutineRegistry
+			filenames := registry.ListAvailable()
+			for _, filename := range filenames {
+				metaInterface := registry.GetMetadata(filename)
+				meta, ok := metaInterface.(*actions.RoutineMetadata)
+				if !ok {
+					continue
+				}
+				displayText := fmt.Sprintf("%s (%s)", meta.DisplayName, meta.Filename)
 
-			t.availableRoutines = append(t.availableRoutines, displayText)
-			t.displayToFilename[displayText] = filename
+				if err := registry.GetValidationError(filename); err != nil {
+					displayText = fmt.Sprintf("⚠️ %s [INVALID]", displayText)
+				}
+
+				t.availableRoutines = append(t.availableRoutines, displayText)
+				t.displayToFilename[displayText] = filename
+			}
 		}
 	} else {
 		// Fallback: scan filesystem directly if manager not yet created
