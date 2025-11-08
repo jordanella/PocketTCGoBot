@@ -13,27 +13,53 @@ type SwipeParams struct {
 	Duration       int // milliseconds
 }
 
-func translateX(x int) int {
+// Default hardcoded translation functions (fallback if no translator is set)
+func translateXDefault(x int) int {
 	return int((float64(540) / float64(277)) * float64(x))
 }
 
-func translateY(y int) int {
+func translateYDefault(y int) int {
 	return int((float64(960) / float64(489)) * float64(y-44))
+}
+
+// translateX translates X coordinate using configured translator or defaults
+func (c *Controller) translateX(x int) int {
+	if c.translator != nil {
+		return c.translator.TranslateX(x)
+	}
+	return translateXDefault(x)
+}
+
+// translateY translates Y coordinate using configured translator or defaults
+func (c *Controller) translateY(y int) int {
+	if c.translator != nil {
+		return c.translator.TranslateY(y)
+	}
+	return translateYDefault(y)
 }
 
 // Click performs a tap at the specified coordinates
 func (c *Controller) Click(x, y int) error {
-	cmd := fmt.Sprintf("input tap %d %d", translateX(x), translateY(y))
-	fmt.Println(x, y)
-	fmt.Println(translateX(x), translateY(y))
+	translatedX := c.translateX(x)
+	translatedY := c.translateY(y)
+	cmd := fmt.Sprintf("input tap %d %d", translatedX, translatedY)
+	fmt.Printf("Click: (%d, %d) -> (%d, %d)\n", x, y, translatedX, translatedY)
 	_, err := c.Shell(cmd)
 	return err
 }
 
 // Swipe performs a swipe gesture
 func (c *Controller) Swipe(X1, Y1, X2, Y2 int, duration int) error {
+	// Fixed bug: was using translateX(Y2) instead of translateY(Y2)
+	translatedX1 := c.translateX(X1)
+	translatedY1 := c.translateY(Y1)
+	translatedX2 := c.translateX(X2)
+	translatedY2 := c.translateY(Y2)
+
 	cmd := fmt.Sprintf("input swipe %d %d %d %d %d",
-		translateX(X1), translateY(Y1), translateX(X2), translateX(Y2), duration)
+		translatedX1, translatedY1, translatedX2, translatedY2, duration)
+	fmt.Printf("Swipe: (%d,%d)->(%d,%d) translated to (%d,%d)->(%d,%d) over %dms\n",
+		X1, Y1, X2, Y2, translatedX1, translatedY1, translatedX2, translatedY2, duration)
 	_, err := c.Shell(cmd)
 	return err
 }

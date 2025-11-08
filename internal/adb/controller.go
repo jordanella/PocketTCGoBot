@@ -8,17 +8,25 @@ import (
 	"sync"
 )
 
+// CoordinateTranslator interface for dependency injection
+type CoordinateTranslator interface {
+	TranslateX(x int) int
+	TranslateY(y int) int
+	TranslatePoint(x, y int) (int, int)
+}
+
 // ADB controller type and lifecycle
 type Controller struct {
-	path     string
-	port     string
-	shell    *exec.Cmd
-	stdin    io.WriteCloser
-	stdout   io.ReadCloser
-	stderr   io.ReadCloser
-	mu       sync.Mutex
-	device   string // Device ID: "127.0.0.1:port"
-	connected bool
+	path       string
+	port       string
+	shell      *exec.Cmd
+	stdin      io.WriteCloser
+	stdout     io.ReadCloser
+	stderr     io.ReadCloser
+	mu         sync.Mutex
+	device     string // Device ID: "127.0.0.1:port"
+	connected  bool
+	translator CoordinateTranslator // Coordinate translation (optional, uses defaults if nil)
 }
 
 // NewController creates a new ADB controller
@@ -104,4 +112,11 @@ func (c *Controller) IsConnected() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.connected
+}
+
+// SetCoordinateTranslator sets the coordinate translator for this controller
+func (c *Controller) SetCoordinateTranslator(translator CoordinateTranslator) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.translator = translator
 }
