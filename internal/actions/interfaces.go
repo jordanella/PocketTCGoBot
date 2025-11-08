@@ -76,6 +76,7 @@ type RoutineControllerInterface interface {
 	SetRunning()
 	SetCompleted()
 	SetIdle()
+	GetState() interface{} // Returns the current state (RoutineExecutionState)
 }
 
 // VariableStoreInterface defines the interface for runtime variable storage

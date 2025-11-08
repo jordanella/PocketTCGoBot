@@ -506,7 +506,7 @@ func (t *BotLauncherTab) safeLog(level LogLevel, instance int, message string) {
 func (t *BotLauncherTab) pauseBot(instance int) {
 	b, exists := t.runningBots[instance]
 	if !exists {
-		t.safeLog(LogLevelWarning, instance, "Cannot pause: bot not running")
+		t.safeLog(LogLevelWarn, instance, "Cannot pause: bot not running")
 		return
 	}
 
@@ -514,7 +514,7 @@ func (t *BotLauncherTab) pauseBot(instance int) {
 		t.safeLog(LogLevelInfo, instance, "Paused")
 		t.updateBotButtons(instance)
 	} else {
-		t.safeLog(LogLevelWarning, instance, "Cannot pause: bot not in running state")
+		t.safeLog(LogLevelWarn, instance, "Cannot pause: bot not in running state")
 	}
 }
 
@@ -522,7 +522,7 @@ func (t *BotLauncherTab) pauseBot(instance int) {
 func (t *BotLauncherTab) resumeBot(instance int) {
 	b, exists := t.runningBots[instance]
 	if !exists {
-		t.safeLog(LogLevelWarning, instance, "Cannot resume: bot not running")
+		t.safeLog(LogLevelWarn, instance, "Cannot resume: bot not running")
 		return
 	}
 
@@ -530,7 +530,7 @@ func (t *BotLauncherTab) resumeBot(instance int) {
 		t.safeLog(LogLevelInfo, instance, "Resumed")
 		t.updateBotButtons(instance)
 	} else {
-		t.safeLog(LogLevelWarning, instance, "Cannot resume: bot not in paused state")
+		t.safeLog(LogLevelWarn, instance, "Cannot resume: bot not in paused state")
 	}
 }
 
@@ -538,7 +538,7 @@ func (t *BotLauncherTab) resumeBot(instance int) {
 func (t *BotLauncherTab) stopBot(instance int) {
 	b, exists := t.runningBots[instance]
 	if !exists {
-		t.safeLog(LogLevelWarning, instance, "Bot not running")
+		t.safeLog(LogLevelWarn, instance, "Bot not running")
 		return
 	}
 
