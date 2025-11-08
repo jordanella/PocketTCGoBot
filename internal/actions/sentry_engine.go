@@ -16,16 +16,27 @@ type SentryEngine struct {
 	wg        sync.WaitGroup
 	mu        sync.RWMutex
 	isRunning bool
+
+	// Metrics tracking
+	metrics map[string]*SentryMetrics // Map of routine name -> metrics
 }
 
 // NewSentryEngine creates a new sentry engine
 func NewSentryEngine(bot BotInterface, sentries []Sentry) *SentryEngine {
 	ctx, cancel := context.WithCancel(bot.Context())
+
+	// Initialize metrics for each sentry
+	metrics := make(map[string]*SentryMetrics)
+	for _, sentry := range sentries {
+		metrics[sentry.Routine] = NewSentryMetrics()
+	}
+
 	return &SentryEngine{
 		bot:      bot,
 		sentries: sentries,
 		ctx:      ctx,
 		cancel:   cancel,
+		metrics:  metrics,
 	}
 }
 
@@ -98,6 +109,9 @@ func (se *SentryEngine) runSentry(sentry *Sentry) {
 
 // executeSentry executes a sentry routine and handles the result
 func (se *SentryEngine) executeSentry(sentry *Sentry) {
+	// Track execution start time
+	startTime := time.Now()
+
 	// Log execution start (severity-based)
 	se.logSentry(sentry, "Executing sentry routine")
 
@@ -118,6 +132,12 @@ func (se *SentryEngine) executeSentry(sentry *Sentry) {
 	// Execute the sentry routine
 	err := builder.Execute(se.bot)
 
+	// Record execution metrics
+	duration := time.Since(startTime)
+	if metrics := se.metrics[sentry.Routine]; metrics != nil {
+		metrics.RecordExecution(duration, err)
+	}
+
 	// Handle result based on success/failure
 	if controller != nil {
 		se.handleSentryResult(sentry, controller, err)
@@ -135,6 +155,11 @@ func (se *SentryEngine) handleSentryResult(sentry *Sentry, controller RoutineCon
 		// Failure: routine returned error
 		action = sentry.OnFailure
 		se.logSentry(sentry, fmt.Sprintf("Sentry failed (%v), action: %s", err, action))
+	}
+
+	// Record action metrics
+	if metrics := se.metrics[sentry.Routine]; metrics != nil {
+		metrics.RecordAction(action)
 	}
 
 	// Execute the appropriate action
@@ -189,4 +214,47 @@ func (se *SentryEngine) logSentry(sentry *Sentry, message string) {
 	}
 
 	fmt.Printf("%s [Sentry:%s] %s\n", prefix, sentry.Routine, message)
+}
+
+// GetMetrics returns the metrics for a specific sentry routine
+func (se *SentryEngine) GetMetrics(routineName string) *SentryMetrics {
+	se.mu.RLock()
+	defer se.mu.RUnlock()
+
+	return se.metrics[routineName]
+}
+
+// GetAllMetrics returns all sentry metrics as a map
+func (se *SentryEngine) GetAllMetrics() map[string]SentryStats {
+	se.mu.RLock()
+	defer se.mu.RUnlock()
+
+	stats := make(map[string]SentryStats)
+	for name, metrics := range se.metrics {
+		stats[name] = metrics.GetStats()
+	}
+	return stats
+}
+
+// CheckSentryHealth checks if all sentries are healthy
+// Returns a list of unhealthy sentry names and their error counts
+func (se *SentryEngine) CheckSentryHealth(consecutiveErrorThreshold int64) []string {
+	se.mu.RLock()
+	defer se.mu.RUnlock()
+
+	var unhealthy []string
+	for name, metrics := range se.metrics {
+		if !metrics.IsHealthy(consecutiveErrorThreshold) {
+			unhealthy = append(unhealthy, name)
+		}
+	}
+	return unhealthy
+}
+
+// GetSentryCount returns the total number of sentries being monitored
+func (se *SentryEngine) GetSentryCount() int {
+	se.mu.RLock()
+	defer se.mu.RUnlock()
+
+	return len(se.sentries)
 }
