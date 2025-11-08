@@ -17,6 +17,7 @@ type BotInterface interface {
 type ADBInterface interface {
 	Shell(ctx context.Context, command string) (string, error)
 	ScreenBounds() (int, int, error)
+	GetDeviceSerial() string
 }
 
 // UnhealthyCallback is called when the bot becomes unhealthy
@@ -35,6 +36,13 @@ type HealthChecker struct {
 	checkInterval    time.Duration
 	onUnhealthy      UnhealthyCallback
 	mu               sync.RWMutex
+
+	// Enhanced monitoring
+	consecutiveFailures int
+	failureThreshold    int
+	lastScreenHash      string
+	frozenCheckCount    int
+	frozenThreshold     int
 }
 
 // NewHealthChecker creates a new health checker
@@ -58,14 +66,18 @@ func NewHealthChecker(bot interface{}) *HealthChecker {
 	}
 
 	return &HealthChecker{
-		bot:              botInterface,
-		ctx:              ctx,
-		cancel:           cancel,
-		lastActivityTime: time.Now(),
-		stuckCount:       0,
-		stuckThreshold:   3,
-		stuckTimeout:     30 * time.Second,
-		checkInterval:    10 * time.Second, // Check every 10 seconds
+		bot:                 botInterface,
+		ctx:                 ctx,
+		cancel:              cancel,
+		lastActivityTime:    time.Now(),
+		stuckCount:          0,
+		stuckThreshold:      3,
+		stuckTimeout:        30 * time.Second,
+		checkInterval:       10 * time.Second, // Check every 10 seconds
+		consecutiveFailures: 0,
+		failureThreshold:    3,
+		frozenCheckCount:    0,
+		frozenThreshold:     3, // Consider frozen after 3 identical screens
 	}
 }
 
@@ -166,21 +178,61 @@ func (hc *HealthChecker) monitorHealth() {
 
 // performHealthChecks runs all health checks
 func (hc *HealthChecker) performHealthChecks() {
+	hc.mu.Lock()
+	hasFailure := false
+	hc.mu.Unlock()
+
 	// Check ADB connection
 	if err := hc.CheckADBConnection(); err != nil {
+		hasFailure = true
+		hc.incrementFailureCount()
 		if hc.onUnhealthy != nil {
 			hc.onUnhealthy("adb_connection_lost", err)
 		}
 		return
 	}
 
+	// Check instance window exists
+	if err := hc.CheckInstanceWindow(); err != nil {
+		hasFailure = true
+		hc.incrementFailureCount()
+		if hc.onUnhealthy != nil {
+			hc.onUnhealthy("instance_window_missing", err)
+		}
+		return
+	}
+
 	// Check device responsiveness
 	if err := hc.CheckDeviceResponsive(); err != nil {
+		hasFailure = true
+		hc.incrementFailureCount()
 		if hc.onUnhealthy != nil {
 			hc.onUnhealthy("device_unresponsive", err)
 		}
 		return
 	}
+
+	// Check if screen is frozen
+	if err := hc.CheckScreenFrozen(); err != nil {
+		hasFailure = true
+		hc.incrementFailureCount()
+		if hc.onUnhealthy != nil {
+			hc.onUnhealthy("screen_frozen", err)
+		}
+		return
+	}
+
+	// All checks passed - reset failure count
+	if !hasFailure {
+		hc.ResetFailureCount()
+	}
+}
+
+// incrementFailureCount increments the consecutive failure counter
+func (hc *HealthChecker) incrementFailureCount() {
+	hc.mu.Lock()
+	defer hc.mu.Unlock()
+	hc.consecutiveFailures++
 }
 
 // CheckADBConnection verifies the ADB connection is alive
@@ -214,4 +266,105 @@ func (hc *HealthChecker) CheckDeviceResponsive() error {
 	}
 
 	return nil
+}
+
+// CheckInstanceWindow verifies the emulator/device window exists
+func (hc *HealthChecker) CheckInstanceWindow() error {
+	if hc.bot == nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Check if device is still connected via ADB
+	serial := hc.bot.ADB().GetDeviceSerial()
+	output, err := hc.bot.ADB().Shell(ctx, "getprop ro.build.version.release")
+	if err != nil {
+		return fmt.Errorf("instance window check failed for %s (instance %d): device not responding", serial, hc.bot.Instance())
+	}
+
+	if output == "" {
+		return fmt.Errorf("instance window check failed for %s (instance %d): empty response from device", serial, hc.bot.Instance())
+	}
+
+	return nil
+}
+
+// CheckScreenFrozen detects if the screen appears to be frozen
+func (hc *HealthChecker) CheckScreenFrozen() error {
+	if hc.bot == nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Get current screen state via dumpsys
+	output, err := hc.bot.ADB().Shell(ctx, "dumpsys window | grep mCurrentFocus")
+	if err != nil {
+		// Don't treat this as frozen, just unable to check
+		return nil
+	}
+
+	hc.mu.Lock()
+	defer hc.mu.Unlock()
+
+	// Check if screen state hasn't changed
+	if output == hc.lastScreenHash && output != "" {
+		hc.frozenCheckCount++
+		if hc.frozenCheckCount >= hc.frozenThreshold {
+			hc.frozenCheckCount = 0 // Reset for next detection
+			return fmt.Errorf("screen appears frozen for instance %d: same focus for %d checks", hc.bot.Instance(), hc.frozenThreshold)
+		}
+	} else {
+		hc.frozenCheckCount = 0
+		hc.lastScreenHash = output
+	}
+
+	return nil
+}
+
+// CheckProcessRunning verifies the target app process is running
+func (hc *HealthChecker) CheckProcessRunning(packageName string) error {
+	if hc.bot == nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Check if package is running
+	output, err := hc.bot.ADB().Shell(ctx, fmt.Sprintf("pidof %s", packageName))
+	if err != nil {
+		return fmt.Errorf("failed to check process for package %s on instance %d: %w", packageName, hc.bot.Instance(), err)
+	}
+
+	if output == "" || output == "error: closed" {
+		return fmt.Errorf("process not running for package %s on instance %d", packageName, hc.bot.Instance())
+	}
+
+	return nil
+}
+
+// GetHealthStatus returns a comprehensive health status
+func (hc *HealthChecker) GetHealthStatus() map[string]interface{} {
+	hc.mu.RLock()
+	defer hc.mu.RUnlock()
+
+	return map[string]interface{}{
+		"last_activity":        hc.lastActivityTime,
+		"time_since_activity":  time.Since(hc.lastActivityTime),
+		"stuck_count":          hc.stuckCount,
+		"consecutive_failures": hc.consecutiveFailures,
+		"frozen_check_count":   hc.frozenCheckCount,
+		"is_healthy":           hc.consecutiveFailures < hc.failureThreshold,
+	}
+}
+
+// ResetFailureCount resets the consecutive failure counter
+func (hc *HealthChecker) ResetFailureCount() {
+	hc.mu.Lock()
+	defer hc.mu.Unlock()
+	hc.consecutiveFailures = 0
 }
