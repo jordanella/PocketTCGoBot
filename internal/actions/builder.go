@@ -41,8 +41,17 @@ func (ab *ActionBuilder) WithTemplateRegistry(registry TemplateRegistryInterface
 
 // InitializeConfigVariables initializes variables from config parameters with their defaults
 // This should be called before executing a routine to set up user-configurable variables
+// If a variable is marked as persistent and already exists, it will NOT be overwritten
 func InitializeConfigVariables(bot BotInterface, config []ConfigParam, overrides map[string]string) error {
 	for _, param := range config {
+		// Skip persistent variables that already have a value
+		if param.Persist {
+			if _, exists := bot.Variables().Get(param.Name); exists {
+				// Variable already exists and is persistent, don't reinitialize
+				continue
+			}
+		}
+
 		// Get the value: override > default > type default
 		value := param.Default
 		if overrides != nil {
@@ -56,6 +65,13 @@ func InitializeConfigVariables(bot BotInterface, config []ConfigParam, overrides
 
 		// Set the variable
 		bot.Variables().Set(param.Name, value)
+
+		// Mark as persistent if specified
+		if param.Persist {
+			if vs, ok := bot.Variables().(*VariableStore); ok {
+				vs.MarkPersistent(param.Name)
+			}
+		}
 	}
 	return nil
 }

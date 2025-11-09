@@ -8,14 +8,16 @@ import (
 
 // VariableStore is a thread-safe implementation of VariableStoreInterface
 type VariableStore struct {
-	mu   sync.RWMutex
-	vars map[string]string
+	mu         sync.RWMutex
+	vars       map[string]string
+	persistent map[string]bool // Tracks which variables should persist between routine iterations
 }
 
 // NewVariableStore creates a new variable store
 func NewVariableStore() *VariableStore {
 	return &VariableStore{
-		vars: make(map[string]string),
+		vars:       make(map[string]string),
+		persistent: make(map[string]bool),
 	}
 }
 
@@ -49,6 +51,35 @@ func (vs *VariableStore) Clear() {
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
 	vs.vars = make(map[string]string)
+	vs.persistent = make(map[string]bool)
+}
+
+// ClearNonPersistent clears all variables except those marked as persistent
+// This is used when reinitializing routines to preserve persistent variables
+func (vs *VariableStore) ClearNonPersistent() {
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+
+	// Keep only persistent variables
+	for name := range vs.vars {
+		if !vs.persistent[name] {
+			delete(vs.vars, name)
+		}
+	}
+}
+
+// MarkPersistent marks a variable as persistent (won't be cleared on reinitialization)
+func (vs *VariableStore) MarkPersistent(name string) {
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	vs.persistent[name] = true
+}
+
+// IsPersistent checks if a variable is marked as persistent
+func (vs *VariableStore) IsPersistent(name string) bool {
+	vs.mu.RLock()
+	defer vs.mu.RUnlock()
+	return vs.persistent[name]
 }
 
 func (vs *VariableStore) GetAll() map[string]string {

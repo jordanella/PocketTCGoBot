@@ -9,13 +9,14 @@ import (
 type ConfigParam struct {
 	Name        string   `yaml:"name"`                   // Variable name
 	Label       string   `yaml:"label"`                  // Display label for GUI
-	Type        string   `yaml:"type"`                   // Type: text, number, checkbox, dropdown
+	Type        string   `yaml:"type"`                   // Type: text, number, checkbox, dropdown, hidden
 	Default     string   `yaml:"default"`                // Default value
 	Description string   `yaml:"description,omitempty"`  // Optional description
 	Options     []string `yaml:"options,omitempty"`      // Options for dropdown type
 	Min         *float64 `yaml:"min,omitempty"`          // Min value for number type
 	Max         *float64 `yaml:"max,omitempty"`          // Max value for number type
 	Required    bool     `yaml:"required,omitempty"`     // Whether parameter is required
+	Persist     bool     `yaml:"persist,omitempty"`      // If true, won't be reset between routine iterations
 }
 
 // Validate validates the config param definition
@@ -34,9 +35,10 @@ func (cp *ConfigParam) Validate() error {
 		"number":   true,
 		"checkbox": true,
 		"dropdown": true,
+		"hidden":   true,
 	}
 	if !validTypes[cp.Type] {
-		return fmt.Errorf("config param '%s': invalid type '%s' (must be: text, number, checkbox, dropdown)", cp.Name, cp.Type)
+		return fmt.Errorf("config param '%s': invalid type '%s' (must be: text, number, checkbox, dropdown, hidden)", cp.Name, cp.Type)
 	}
 
 	// Dropdown must have options
@@ -114,9 +116,14 @@ func (cp *ConfigParam) GetTypeDefault() string {
 			return cp.Options[0]
 		}
 		return ""
-	case "text":
+	case "text", "hidden":
 		return ""
 	default:
 		return ""
 	}
+}
+
+// IsHidden returns true if this config param should be hidden from GUI
+func (cp *ConfigParam) IsHidden() bool {
+	return cp.Type == "hidden"
 }
