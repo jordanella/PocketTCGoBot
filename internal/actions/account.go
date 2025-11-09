@@ -2,10 +2,12 @@ package actions
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
 	"jordanella.com/pocket-tcg-go/internal/accountpool"
+	"jordanella.com/pocket-tcg-go/internal/database"
 )
 
 // InjectNextAccount requests the next available account from the pool and injects it
@@ -90,6 +92,21 @@ func (a *InjectNextAccount) Build(ab *ActionBuilder) *ActionBuilder {
 			if a.SaveResult != "" {
 				botIf.Variables().Set(a.SaveResult, account.ID)
 				fmt.Printf("Bot %d: Stored account ID '%s' in variable '%s'\n", botIf.Instance(), account.ID, a.SaveResult)
+			}
+
+			// Try to get database account ID if database is available
+			// This enables routine execution tracking
+			if dbProvider, ok := managerIf.(interface{ Database() *sql.DB }); ok {
+				if db := dbProvider.Database(); db != nil && account.DeviceAccount != "" {
+					accountID, err := database.GetAccountIDByDeviceAccount(db, account.DeviceAccount)
+					if err != nil {
+						fmt.Printf("Bot %d: Warning - could not get database account ID: %v\n", botIf.Instance(), err)
+					} else {
+						// Set device_account_id variable for routine execution tracking
+						botIf.Variables().Set("device_account_id", fmt.Sprintf("%d", accountID))
+						fmt.Printf("Bot %d: Set device_account_id variable to %d\n", botIf.Instance(), accountID)
+					}
+				}
 			}
 
 			fmt.Printf("Bot %d: Account '%s' assigned and injected\n", botIf.Instance(), account.ID)

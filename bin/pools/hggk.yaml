@@ -1,0 +1,29 @@
+name: hggk
+description: ""
+type: sql
+version: "1.0"
+query:
+    select: |-
+        SELECT
+          id,
+          xml_path,
+          pack_count,
+          last_modified,
+          status,
+          failure_count,
+          last_error
+        FROM accounts
+        WHERE status = ?
+        LIMIT 50
+    parameters: []
+pool_config:
+    minpacks: 0
+    maxpacks: 0
+    sortmethod: 0
+    maxfailures: 3
+    retryfailed: false
+    autorefresh: false
+    refreshinterval: 30s
+    waitforaccounts: true
+    maxwaittime: 5m0s
+    buffersize: 50

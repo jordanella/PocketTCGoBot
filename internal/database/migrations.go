@@ -64,6 +64,12 @@ var migrations = []Migration{
 		Up:          migration008Up,
 		Down:        migration008Down,
 	},
+	{
+		Version:     9,
+		Description: "Create routine_executions table for tracking routine runs per account",
+		Up:          migration009Up,
+		Down:        migration009Down,
+	},
 }
 
 // RunMigrations runs all pending database migrations
@@ -576,6 +582,49 @@ func migration008Down(tx *sql.Tx) error {
 		DROP INDEX IF EXISTS idx_accounts_completed;
 		DROP INDEX IF EXISTS idx_accounts_failure_count;
 		DROP INDEX IF EXISTS idx_accounts_pool_status;
+	`)
+	return err
+}
+
+// Migration 009: Routine execution tracking
+func migration009Up(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		-- Table to track routine executions per account
+		CREATE TABLE routine_executions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			account_id INTEGER NOT NULL,
+			routine_name TEXT NOT NULL,
+			execution_status TEXT NOT NULL DEFAULT 'started',
+			started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			completed_at DATETIME,
+			duration_seconds INTEGER,
+			error_message TEXT,
+			packs_opened INTEGER DEFAULT 0,
+			wonder_picks_done INTEGER DEFAULT 0,
+			bot_instance INTEGER,
+			FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+			-- Ensure we can track the latest execution per routine
+			UNIQUE(account_id, routine_name, started_at)
+		);
+
+		-- Index for finding accounts that completed specific routines
+		CREATE INDEX idx_routine_exec_account_routine ON routine_executions(account_id, routine_name);
+		CREATE INDEX idx_routine_exec_status ON routine_executions(execution_status);
+		CREATE INDEX idx_routine_exec_completed ON routine_executions(completed_at);
+
+		-- Composite index for pool queries like "completed routine X more than 12h ago"
+		CREATE INDEX idx_routine_exec_lookup ON routine_executions(routine_name, execution_status, completed_at);
+	`)
+	return err
+}
+
+func migration009Down(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		DROP INDEX IF EXISTS idx_routine_exec_lookup;
+		DROP INDEX IF EXISTS idx_routine_exec_completed;
+		DROP INDEX IF EXISTS idx_routine_exec_status;
+		DROP INDEX IF EXISTS idx_routine_exec_account_routine;
+		DROP TABLE IF EXISTS routine_executions;
 	`)
 	return err
 }

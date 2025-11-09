@@ -1,15 +1,16 @@
 package bot
 
 import (
+	"database/sql"
 	"fmt"
 	"math"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"jordanella.com/pocket-tcg-go/internal/accountpool"
 	"jordanella.com/pocket-tcg-go/internal/actions"
+	"jordanella.com/pocket-tcg-go/internal/database"
 	"jordanella.com/pocket-tcg-go/pkg/templates"
 )
 
@@ -22,6 +23,7 @@ type Manager struct {
 	templateRegistry actions.TemplateRegistryInterface
 	routineRegistry  actions.RoutineRegistryInterface
 	accountPool      accountpool.AccountPool // Shared account pool (optional)
+	db               *sql.DB                 // Database connection for routine tracking (optional)
 }
 
 // NewManager creates a new bot manager with shared registries
@@ -157,10 +159,12 @@ func (m *Manager) RestartBot(instance int) (string, error) {
 
 // ExecuteWithRestart executes a routine with auto-restart on failure
 // Uses the provided RestartPolicy to determine retry behavior
+// NOTE: Account injection should occur via routine-defined action steps (InjectAccount action),
+// not automatically at this level. Routine execution tracking is only recorded when database is configured.
 func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy RestartPolicy) error {
 	m.mu.RLock()
 	bot, exists := m.bots[instance]
-	pool := m.accountPool
+	db := m.db
 	m.mu.RUnlock()
 
 	if !exists {
@@ -176,62 +180,43 @@ func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy Re
 		return fmt.Errorf("failed to get routine '%s': %w", routineName, err)
 	}
 
-	// Get account from pool if available
-	var account *accountpool.Account
-	var tempXMLPath string
-	if pool != nil {
-		ctx := bot.Context()
-		poolAccount, err := pool.GetNext(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to get account from pool: %w", err)
-		}
-		account = poolAccount
+	// Start routine execution tracking if database is available and account is injected
+	var executionID int64
+	var accountID int64
+	if db != nil {
+		// Check if bot has device_account_id variable set (indicates account was injected)
+		if deviceAccountStr, exists := bot.Variables().Get("device_account_id"); exists && deviceAccountStr != "" {
+			// Parse account ID from variable
+			fmt.Sscanf(deviceAccountStr, "%d", &accountID)
 
-		// Generate XML file from credentials if needed
-		xmlPath := account.XMLPath
-		if xmlPath == "" {
-			// Create temp directory for account XMLs
-			tempDir := "temp_accounts"
-			os.MkdirAll(tempDir, 0755)
-
-			// Generate XML file
-			tempXMLPath, err = account.GenerateXML(tempDir)
+			// Record routine start
+			executionID, err = database.StartRoutineExecution(db, accountID, routineName, instance)
 			if err != nil {
-				pool.Return(account)
-				return fmt.Errorf("failed to generate account XML: %w", err)
-			}
-			xmlPath = tempXMLPath
-
-			// Clean up temp file on exit
-			defer func() {
-				if tempXMLPath != "" {
-					os.Remove(tempXMLPath)
-				}
-			}()
-		}
-
-		// Inject account into bot
-		if err := bot.InjectAccount(xmlPath); err != nil {
-			// Return account to pool on injection failure
-			pool.Return(account)
-			return fmt.Errorf("failed to inject account: %w", err)
-		}
-
-		fmt.Printf("Bot %d: Injected account '%s' from pool\n", instance, account.ID)
-
-		// Ensure account is returned to pool on function exit
-		defer func() {
-			if err := pool.Return(account); err != nil {
-				fmt.Printf("Bot %d: Warning - failed to return account to pool: %v\n", instance, err)
+				fmt.Printf("Bot %d: Warning - failed to start routine tracking: %v\n", instance, err)
 			} else {
-				fmt.Printf("Bot %d: Returned account '%s' to pool\n", instance, account.ID)
+				fmt.Printf("Bot %d: Started routine execution tracking (ID: %d)\n", instance, executionID)
 			}
-		}()
+		}
 	}
 
 	// If restart is not enabled, execute once and return
 	if !policy.Enabled {
-		return routineBuilder.Execute(bot)
+		err := routineBuilder.Execute(bot)
+
+		// Update routine execution tracking
+		if db != nil && executionID > 0 {
+			if err == nil {
+				if completeErr := database.CompleteRoutineExecution(db, executionID, 0, 0); completeErr != nil {
+					fmt.Printf("Bot %d: Warning - failed to mark routine as completed: %v\n", instance, completeErr)
+				}
+			} else {
+				if failErr := database.FailRoutineExecution(db, executionID, err.Error()); failErr != nil {
+					fmt.Printf("Bot %d: Warning - failed to mark routine as failed: %v\n", instance, failErr)
+				}
+			}
+		}
+
+		return err
 	}
 
 	// Execute with retry logic
@@ -244,6 +229,15 @@ func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy Re
 
 		// Success - reset retry counter if configured
 		if err == nil {
+			// Update routine execution tracking
+			if db != nil && executionID > 0 {
+				if completeErr := database.CompleteRoutineExecution(db, executionID, 0, 0); completeErr != nil {
+					fmt.Printf("Bot %d: Warning - failed to mark routine as completed: %v\n", instance, completeErr)
+				} else {
+					fmt.Printf("Bot %d: Routine execution completed and tracked (ID: %d)\n", instance, executionID)
+				}
+			}
+
 			if policy.ResetOnSuccess && retryCount > 0 {
 				fmt.Printf("Bot %d: Routine '%s' succeeded after %d retries\n", instance, routineName, retryCount)
 			}
@@ -252,6 +246,13 @@ func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy Re
 
 		// Check if we've exceeded max retries
 		if policy.MaxRetries > 0 && retryCount >= policy.MaxRetries {
+			// Update routine execution tracking on final failure
+			if db != nil && executionID > 0 {
+				if failErr := database.FailRoutineExecution(db, executionID, err.Error()); failErr != nil {
+					fmt.Printf("Bot %d: Warning - failed to mark routine as failed: %v\n", instance, failErr)
+				}
+			}
+
 			return fmt.Errorf("bot %d routine '%s' failed after %d retries: %w", instance, routineName, retryCount, err)
 		}
 
@@ -326,6 +327,20 @@ func (m *Manager) AccountPool() accountpool.AccountPool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.accountPool
+}
+
+// SetDatabase sets the database connection for routine tracking
+func (m *Manager) SetDatabase(db *sql.DB) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.db = db
+}
+
+// Database returns the database connection
+func (m *Manager) Database() *sql.DB {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.db
 }
 
 // ReloadRoutines clears and reloads all routines from disk

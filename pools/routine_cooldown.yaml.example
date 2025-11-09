@@ -1,0 +1,63 @@
+# Routine Cooldown Pool - Accounts ready for specific routine after cooldown
+name: "Daily Routine Ready Pool"
+description: "Accounts that completed 'daily_routine' more than 12 hours ago"
+type: "sql"
+version: "1.0"
+
+# SQL query configuration
+query:
+  # Query accounts that either:
+  # 1. Never ran the routine, OR
+  # 2. Completed it more than 12 hours ago
+  select: |
+    SELECT DISTINCT
+      a.id,
+      a.device_account,
+      a.device_password,
+      a.packs_opened,
+      a.last_used_at,
+      a.pool_status,
+      a.failure_count,
+      a.last_error
+    FROM accounts a
+    LEFT JOIN (
+      SELECT
+        account_id,
+        routine_name,
+        MAX(completed_at) as last_completed
+      FROM routine_executions
+      WHERE routine_name = ?
+        AND execution_status = 'completed'
+      GROUP BY account_id, routine_name
+    ) re ON a.id = re.account_id
+    WHERE a.pool_status = 'available'
+      AND a.failure_count < ?
+      AND (
+        re.last_completed IS NULL  -- Never ran this routine
+        OR
+        datetime(re.last_completed) <= datetime('now', '-12 hours')  -- Ran >12h ago
+      )
+    ORDER BY re.last_completed ASC NULLS FIRST  -- Prioritize never-run accounts
+    LIMIT ?
+
+  # Parameters for the query
+  parameters:
+    - name: "routine_name"
+      value: "daily_routine"
+      type: "string"
+
+    - name: "max_failures"
+      value: 3
+      type: "int"
+
+    - name: "limit"
+      value: 100
+      type: "int"
+
+# Pool behavior settings
+pool_config:
+  retry_failed: true
+  max_failures: 3
+  wait_for_accounts: false
+  buffer_size: 50
+  refresh_interval: 5m  # Refresh every 5 minutes to check for newly available accounts
