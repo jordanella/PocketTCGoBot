@@ -1,0 +1,90 @@
+# Premium Account Pool - Accounts with high pack counts
+name: "Premium Farmers Pool"
+description: "Accounts with 10+ packs, sorted by pack count descending, max 3 failures"
+type: "sql"
+version: "1.0"
+
+# SQL query configuration
+query:
+  # Main SELECT query (parameterized for safety)
+  # Expected columns: id, xml_path, pack_count, last_modified, status, failure_count, last_error
+  select: |
+    SELECT
+      id,
+      xml_path,
+      pack_count,
+      last_modified,
+      status,
+      failure_count,
+      last_error
+    FROM accounts
+    WHERE status IN (?, ?)
+      AND pack_count >= ?
+      AND failure_count < ?
+    ORDER BY pack_count DESC, last_modified ASC
+    LIMIT ?
+
+  # Parameters for the query (values substituted safely via prepared statements)
+  parameters:
+    - name: "status_available"
+      value: "available"
+      type: "string"
+
+    - name: "status_skipped"
+      value: "skipped"
+      type: "string"
+
+    - name: "min_packs"
+      value: 10
+      type: "int"
+
+    - name: "max_failures"
+      value: 3
+      type: "int"
+
+    - name: "limit"
+      value: 100
+      type: "int"
+
+# Pool behavior settings
+pool_config:
+  min_packs: 10
+  max_packs: 0  # 0 = unlimited
+  retry_failed: true
+  max_failures: 3
+  wait_for_accounts: true
+  max_wait_time: 5m
+  buffer_size: 50
+  refresh_interval: 30s  # Auto-refresh query results every 30 seconds
+
+# GUI query builder configuration (optional - for visual editor)
+gui_config:
+  # Visual representation of filters
+  filters:
+    - field: "status"
+      operator: "in"
+      values: ["available", "skipped"]
+      display: "Status is Available or Skipped"
+
+    - field: "pack_count"
+      operator: ">="
+      value: 10
+      display: "Pack Count >= 10"
+
+    - field: "failure_count"
+      operator: "<"
+      value: 3
+      display: "Failure Count < 3"
+
+  # Sort configuration
+  sort:
+    - field: "pack_count"
+      direction: "DESC"
+      display: "Most Packs First"
+
+    - field: "last_modified"
+      direction: "ASC"
+      display: "Then Oldest Modified"
+
+  # Result limit
+  limit: 100

@@ -1,0 +1,72 @@
+# Fresh Account Pool - Never-used accounts
+name: "Fresh Account Pool"
+description: "Accounts that have never been processed, sorted by pack count"
+type: "sql"
+version: "1.0"
+
+query:
+  select: |
+    SELECT
+      id,
+      xml_path,
+      pack_count,
+      last_modified,
+      status,
+      failure_count,
+      last_error
+    FROM accounts
+    WHERE status = ?
+      AND completed_at IS NULL
+      AND failure_count = 0
+      AND pack_count >= ?
+    ORDER BY pack_count DESC
+    LIMIT ?
+
+  parameters:
+    - name: "status"
+      value: "available"
+      type: "string"
+
+    - name: "min_packs"
+      value: 5
+      type: "int"
+
+    - name: "limit"
+      value: 50
+      type: "int"
+
+pool_config:
+  retry_failed: false  # Don't retry - these are fresh accounts
+  max_failures: 1
+  wait_for_accounts: true
+  max_wait_time: 2m
+  buffer_size: 50
+  refresh_interval: 1m
+
+gui_config:
+  filters:
+    - field: "status"
+      operator: "="
+      value: "available"
+      display: "Status = Available"
+
+    - field: "completed_at"
+      operator: "IS NULL"
+      display: "Never Completed"
+
+    - field: "failure_count"
+      operator: "="
+      value: 0
+      display: "No Failures"
+
+    - field: "pack_count"
+      operator: ">="
+      value: 5
+      display: "Pack Count >= 5"
+
+  sort:
+    - field: "pack_count"
+      direction: "DESC"
+      display: "Most Packs First"
+
+  limit: 50
