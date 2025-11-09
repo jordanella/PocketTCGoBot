@@ -411,7 +411,6 @@ func (qb *QueryBuilder) generateQuery() string {
 
 			field := filter.fieldSelect.Selected
 			operator := filter.operatorSelect.Selected
-			value := filter.valueEntry.Text
 
 			sb.WriteString(field)
 			sb.WriteString(" ")
