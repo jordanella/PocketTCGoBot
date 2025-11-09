@@ -391,7 +391,7 @@ func (p *SQLAccountPool) GetNext(ctx context.Context) (*Account, error) {
 	}
 	p.mu.RUnlock()
 
-	// Try to get from channel
+	// Try to get from channel first
 	select {
 	case account := <-p.available:
 		// Mark as in use
@@ -403,15 +403,32 @@ func (p *SQLAccountPool) GetNext(ctx context.Context) (*Account, error) {
 		return account, nil
 
 	case <-ctx.Done():
-		if p.config.WaitForAccounts {
-			return nil, fmt.Errorf("timeout waiting for available accounts")
-		}
-		return nil, fmt.Errorf("no accounts available")
+		return nil, fmt.Errorf("context cancelled")
 
 	default:
+		// Channel is empty, check if we have available accounts in the map
+		p.mu.Lock()
+
+		// Find an available account
+		for _, account := range p.accounts {
+			if account.Status == AccountStatusAvailable {
+				// Mark as in use
+				account.Status = AccountStatusInUse
+				now := time.Now()
+				account.AssignedAt = &now
+				p.mu.Unlock()
+				return account, nil
+			}
+		}
+
+		// No available accounts found
 		if !p.config.WaitForAccounts {
+			p.mu.Unlock()
 			return nil, fmt.Errorf("no accounts available")
 		}
+
+		// Release lock before waiting
+		p.mu.Unlock()
 
 		// Wait for account with timeout
 		timeout := p.config.MaxWaitTime

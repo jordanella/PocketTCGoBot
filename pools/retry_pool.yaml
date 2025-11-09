@@ -1,0 +1,89 @@
+# Retry Pool - High-value accounts that failed once or twice
+name: "High Value Retry Pool"
+description: "Retry accounts with high pack counts that failed 1-2 times (not banned)"
+type: "sql"
+version: "1.0"
+
+query:
+  select: |
+    SELECT
+      id,
+      xml_path,
+      pack_count,
+      last_modified,
+      status,
+      failure_count,
+      last_error
+    FROM accounts
+    WHERE status IN (?, ?)
+      AND pack_count >= ?
+      AND failure_count BETWEEN ? AND ?
+      AND (last_error NOT LIKE '%banned%' OR last_error IS NULL)
+    ORDER BY pack_count DESC, failure_count ASC
+    LIMIT ?
+
+  parameters:
+    - name: "status_failed"
+      value: "failed"
+      type: "string"
+
+    - name: "status_skipped"
+      value: "skipped"
+      type: "string"
+
+    - name: "min_packs"
+      value: 15
+      type: "int"
+
+    - name: "min_failures"
+      value: 1
+      type: "int"
+
+    - name: "max_failures"
+      value: 2
+      type: "int"
+
+    - name: "limit"
+      value: 25
+      type: "int"
+
+pool_config:
+  retry_failed: true
+  max_failures: 3  # Total of 3 failures allowed (already has 1-2)
+  wait_for_accounts: true
+  max_wait_time: 3m
+  buffer_size: 25
+  refresh_interval: 2m
+
+gui_config:
+  filters:
+    - field: "status"
+      operator: "in"
+      values: ["failed", "skipped"]
+      display: "Status is Failed or Skipped"
+
+    - field: "pack_count"
+      operator: ">="
+      value: 15
+      display: "Pack Count >= 15"
+
+    - field: "failure_count"
+      operator: "BETWEEN"
+      values: [1, 2]
+      display: "Failure Count Between 1 and 2"
+
+    - field: "last_error"
+      operator: "NOT LIKE"
+      value: "%banned%"
+      display: "Not Banned"
+
+  sort:
+    - field: "pack_count"
+      direction: "DESC"
+      display: "Most Packs First"
+
+    - field: "failure_count"
+      direction: "ASC"
+      display: "Then Fewest Failures"
+
+  limit: 25

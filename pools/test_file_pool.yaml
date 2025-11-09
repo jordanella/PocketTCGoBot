@@ -1,0 +1,15 @@
+# Test File Pool - For testing file-based account pools
+name: "Test File Pool"
+description: "File-based pool for testing"
+type: "file"
+version: "1.0"
+
+directory: "./test_accounts"
+
+pool_config:
+  retry_failed: false
+  max_failures: 1
+  wait_for_accounts: false
+  max_wait_time: 1m
+  buffer_size: 10
+  refresh_interval: 0  # No auto-refresh
