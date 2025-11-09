@@ -58,6 +58,12 @@ var migrations = []Migration{
 		Up:          migration007Up,
 		Down:        migration007Down,
 	},
+	{
+		Version:     8,
+		Description: "Create pool_accounts table for account pool system",
+		Up:          migration008Up,
+		Down:        migration008Down,
+	},
 }
 
 // RunMigrations runs all pending database migrations
@@ -542,6 +548,34 @@ func migration007Down(tx *sql.Tx) error {
 		DROP VIEW IF EXISTS v_pack_statistics;
 		DROP VIEW IF EXISTS v_recent_activity;
 		DROP VIEW IF EXISTS v_active_accounts;
+	`)
+	return err
+}
+
+// Migration 008: Add pool system columns to accounts table
+func migration008Up(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		-- Add pool lifecycle tracking columns
+		ALTER TABLE accounts ADD COLUMN pool_status TEXT DEFAULT 'available';
+		ALTER TABLE accounts ADD COLUMN failure_count INTEGER DEFAULT 0;
+		ALTER TABLE accounts ADD COLUMN last_error TEXT;
+		ALTER TABLE accounts ADD COLUMN completed_at DATETIME;
+
+		-- Create indexes for pool queries
+		CREATE INDEX idx_accounts_pool_status ON accounts(pool_status);
+		CREATE INDEX idx_accounts_failure_count ON accounts(failure_count);
+		CREATE INDEX idx_accounts_completed ON accounts(completed_at);
+	`)
+	return err
+}
+
+func migration008Down(tx *sql.Tx) error {
+	// Note: SQLite doesn't support DROP COLUMN, so we'd need to recreate the table
+	// For now, just drop the indexes
+	_, err := tx.Exec(`
+		DROP INDEX IF EXISTS idx_accounts_completed;
+		DROP INDEX IF EXISTS idx_accounts_failure_count;
+		DROP INDEX IF EXISTS idx_accounts_pool_status;
 	`)
 	return err
 }

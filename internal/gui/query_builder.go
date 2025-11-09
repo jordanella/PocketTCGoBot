@@ -67,22 +67,24 @@ type SortRow struct {
 
 // Available fields for filtering and sorting
 var availableFields = []string{
-	"status",
-	"pack_count",
+	"pool_status",
+	"packs_opened",
 	"failure_count",
 	"completed_at",
-	"last_modified",
+	"last_used_at",
 	"last_error",
+	"device_account",
 }
 
 // Available operators
 var availableOperators = map[string][]string{
-	"status":         {"=", "!=", "IN"},
-	"pack_count":     {"=", "!=", "<", ">", "<=", ">=", "BETWEEN"},
+	"pool_status":    {"=", "!=", "IN"},
+	"packs_opened":   {"=", "!=", "<", ">", "<=", ">=", "BETWEEN"},
 	"failure_count":  {"=", "!=", "<", ">", "<=", ">=", "BETWEEN"},
 	"completed_at":   {"IS NULL", "IS NOT NULL", "<", ">"},
-	"last_modified":  {"<", ">", "<=", ">="},
+	"last_used_at":   {"<", ">", "<=", ">="},
 	"last_error":     {"LIKE", "NOT LIKE", "IS NULL", "IS NOT NULL"},
+	"device_account": {"=", "!=", "LIKE"},
 }
 
 // NewQueryBuilder creates a new visual query builder
@@ -459,10 +461,11 @@ func (qb *QueryBuilder) generateQuery() string {
 
 	sb.WriteString("SELECT\n")
 	sb.WriteString("  id,\n")
-	sb.WriteString("  xml_path,\n")
+	sb.WriteString("  device_account,\n")
+	sb.WriteString("  device_password,\n")
 	sb.WriteString("  pack_count,\n")
-	sb.WriteString("  last_modified,\n")
-	sb.WriteString("  status,\n")
+	sb.WriteString("  last_used_at,\n")
+	sb.WriteString("  pool_status,\n")
 	sb.WriteString("  failure_count,\n")
 	sb.WriteString("  last_error\n")
 	sb.WriteString("FROM accounts\n")

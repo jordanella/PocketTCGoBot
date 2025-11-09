@@ -39,6 +39,13 @@ type BotInterface interface {
 	// State queries (add as needed)
 	IsPaused() bool
 	IsStopped() bool
+	Instance() int
+
+	// Account management
+	Manager() interface{} // Returns bot.ManagerInterface
+	GetCurrentAccount() interface{} // Returns *bot.Account
+	InjectAccount(account interface{}) error // Takes *bot.Account
+	ClearCurrentAccount()
 
 	// Add other methods that actions need to call on the bot
 }

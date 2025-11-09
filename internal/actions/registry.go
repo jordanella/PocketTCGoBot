@@ -41,4 +41,9 @@ var actionRegistry = map[string]reflect.Type{
 	"getvariable": reflect.TypeOf(GetVariable{}),
 	"increment":   reflect.TypeOf(Increment{}),
 	"decrement":   reflect.TypeOf(Decrement{}),
+	// Account pool actions
+	"injectnextaccount":  reflect.TypeOf(InjectNextAccount{}),
+	"completeaccount":    reflect.TypeOf(CompleteAccount{}),
+	"returnaccount":      reflect.TypeOf(ReturnAccount{}),
+	"markaccountfailed":  reflect.TypeOf(MarkAccountFailed{}),
 }

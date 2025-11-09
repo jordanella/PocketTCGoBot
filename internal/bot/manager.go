@@ -3,6 +3,7 @@ package bot
 import (
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -177,6 +178,7 @@ func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy Re
 
 	// Get account from pool if available
 	var account *accountpool.Account
+	var tempXMLPath string
 	if pool != nil {
 		ctx := bot.Context()
 		poolAccount, err := pool.GetNext(ctx)
@@ -185,8 +187,31 @@ func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy Re
 		}
 		account = poolAccount
 
+		// Generate XML file from credentials if needed
+		xmlPath := account.XMLPath
+		if xmlPath == "" {
+			// Create temp directory for account XMLs
+			tempDir := "temp_accounts"
+			os.MkdirAll(tempDir, 0755)
+
+			// Generate XML file
+			tempXMLPath, err = account.GenerateXML(tempDir)
+			if err != nil {
+				pool.Return(account)
+				return fmt.Errorf("failed to generate account XML: %w", err)
+			}
+			xmlPath = tempXMLPath
+
+			// Clean up temp file on exit
+			defer func() {
+				if tempXMLPath != "" {
+					os.Remove(tempXMLPath)
+				}
+			}()
+		}
+
 		// Inject account into bot
-		if err := bot.InjectAccount(account.XMLPath); err != nil {
+		if err := bot.InjectAccount(xmlPath); err != nil {
 			// Return account to pool on injection failure
 			pool.Return(account)
 			return fmt.Errorf("failed to inject account: %w", err)

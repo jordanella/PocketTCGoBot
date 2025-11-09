@@ -3,6 +3,8 @@ package accountpool
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"time"
 )
 
@@ -47,10 +49,12 @@ type AccountPool interface {
 
 // Account represents a single account in the pool
 type Account struct {
-	ID           string            // Unique identifier (typically filename without extension)
-	XMLPath      string            // Full path to the account XML file
+	ID           string            // Unique identifier (typically device_account)
+	XMLPath      string            // Full path to the account XML file (generated on-demand or cached)
+	DeviceAccount string           // Device account credential
+	DevicePassword string          // Device password credential
 	PackCount    int               // Number of packs available
-	LastModified time.Time         // Last modification time of XML file
+	LastModified time.Time         // Last modification time
 	Metadata     map[string]string // Additional metadata (tags, notes, etc.)
 
 	// State tracking
@@ -170,15 +174,17 @@ func DefaultPoolConfig() PoolConfig {
 // Clone creates a deep copy of the account
 func (a *Account) Clone() *Account {
 	clone := &Account{
-		ID:           a.ID,
-		XMLPath:      a.XMLPath,
-		PackCount:    a.PackCount,
-		LastModified: a.LastModified,
-		Metadata:     make(map[string]string),
-		Status:       a.Status,
-		AssignedTo:   a.AssignedTo,
-		FailureCount: a.FailureCount,
-		LastError:    a.LastError,
+		ID:             a.ID,
+		XMLPath:        a.XMLPath,
+		DeviceAccount:  a.DeviceAccount,
+		DevicePassword: a.DevicePassword,
+		PackCount:      a.PackCount,
+		LastModified:   a.LastModified,
+		Metadata:       make(map[string]string),
+		Status:         a.Status,
+		AssignedTo:     a.AssignedTo,
+		FailureCount:   a.FailureCount,
+		LastError:      a.LastError,
 	}
 
 	// Copy metadata
@@ -203,6 +209,22 @@ func (a *Account) Clone() *Account {
 	}
 
 	return clone
+}
+
+// GenerateXML creates an XML file with the account credentials
+// Returns the path to the generated XML file
+func (a *Account) GenerateXML(tempDir string) (string, error) {
+	// XML template matching the expected format
+	xmlContent := fmt.Sprintf(`<account>%s</account>
+<password>%s</password>`, a.DeviceAccount, a.DevicePassword)
+
+	// Create temp file
+	filePath := fmt.Sprintf("%s/%s.xml", tempDir, a.ID)
+	if err := os.WriteFile(filePath, []byte(xmlContent), 0644); err != nil {
+		return "", fmt.Errorf("failed to write XML file: %w", err)
+	}
+
+	return filePath, nil
 }
 
 // IsAvailable returns whether the account can be assigned

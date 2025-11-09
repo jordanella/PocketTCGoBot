@@ -36,14 +36,15 @@ func main() {
 	fmt.Println("Creating test data...")
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS accounts (
-			id TEXT PRIMARY KEY,
-			xml_path TEXT,
-			pack_count INTEGER,
-			last_modified TEXT,
-			status TEXT,
-			failure_count INTEGER,
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			device_account TEXT NOT NULL UNIQUE,
+			device_password TEXT NOT NULL,
+			packs_opened INTEGER DEFAULT 0,
+			last_used_at DATETIME,
+			pool_status TEXT DEFAULT 'available',
+			failure_count INTEGER DEFAULT 0,
 			last_error TEXT,
-			completed_at TEXT
+			completed_at DATETIME
 		);
 		DELETE FROM accounts;
 	`)
@@ -51,26 +52,26 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Insert test accounts and create XML files
+	// Insert test accounts
 	testAccounts := []struct {
-		id     string
-		packs  int
-		status string
+		account  string
+		password string
+		packs    int
 	}{
-		{"test001", 15, "available"},
-		{"test002", 22, "available"},
-		{"test003", 18, "available"},
+		{"test001@example.com", "password001", 15},
+		{"test002@example.com", "password002", 22},
+		{"test003@example.com", "password003", 18},
 	}
 
-	stmt, _ := db.Prepare("INSERT INTO accounts (id, xml_path, pack_count, status, failure_count, last_modified) VALUES (?, ?, ?, ?, 0, datetime('now'))")
 	for _, acc := range testAccounts {
-		xmlPath := filepath.Join(testAccountsDir, acc.id+".xml")
-		os.WriteFile(xmlPath, []byte("<account/>"), 0644)
-		stmt.Exec(acc.id, xmlPath, acc.packs, acc.status)
+		_, err := db.Exec("INSERT INTO accounts (device_account, device_password, packs_opened, pool_status, failure_count, last_used_at) VALUES (?, ?, ?, 'available', 0, datetime('now'))",
+			acc.account, acc.password, acc.packs)
+		if err != nil {
+			log.Fatalf("Failed to insert account %s: %v", acc.account, err)
+		}
 	}
-	stmt.Close()
 
-	fmt.Println("✓ Created 3 test accounts with XML files\n")
+	fmt.Println("✓ Created 3 test accounts in database\n")
 
 	// Create pool manager
 	poolManager := accountpool.NewPoolManager(poolsDir, db)

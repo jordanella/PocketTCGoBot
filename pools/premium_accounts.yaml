@@ -7,21 +7,22 @@ version: "1.0"
 # SQL query configuration
 query:
   # Main SELECT query (parameterized for safety)
-  # Expected columns: id, xml_path, pack_count, last_modified, status, failure_count, last_error
+  # Expected columns: id, device_account, device_password, pack_count, last_used_at, pool_status, failure_count, last_error
   select: |
     SELECT
       id,
-      xml_path,
-      pack_count,
-      last_modified,
-      status,
+      device_account,
+      device_password,
+      packs_opened,
+      last_used_at,
+      pool_status,
       failure_count,
       last_error
     FROM accounts
-    WHERE status IN (?, ?)
-      AND pack_count >= ?
+    WHERE pool_status IN (?, ?)
+      AND packs_opened >= ?
       AND failure_count < ?
-    ORDER BY pack_count DESC, last_modified ASC
+    ORDER BY packs_opened DESC, last_used_at ASC
     LIMIT ?
 
   # Parameters for the query (values substituted safely via prepared statements)
@@ -61,15 +62,15 @@ pool_config:
 gui_config:
   # Visual representation of filters
   filters:
-    - field: "status"
+    - field: "pool_status"
       operator: "in"
       values: ["available", "skipped"]
       display: "Status is Available or Skipped"
 
-    - field: "pack_count"
+    - field: "packs_opened"
       operator: ">="
       value: 10
-      display: "Pack Count >= 10"
+      display: "Packs Opened >= 10"
 
     - field: "failure_count"
       operator: "<"
@@ -78,13 +79,13 @@ gui_config:
 
   # Sort configuration
   sort:
-    - field: "pack_count"
+    - field: "packs_opened"
       direction: "DESC"
       display: "Most Packs First"
 
-    - field: "last_modified"
+    - field: "last_used_at"
       direction: "ASC"
-      display: "Then Oldest Modified"
+      display: "Then Oldest Used"
 
   # Result limit
   limit: 100

@@ -244,15 +244,17 @@ func (p *SQLAccountPool) refresh() error {
 			Metadata: make(map[string]string),
 		}
 
-		// Scan result - expects columns: id, xml_path, pack_count, last_modified, status, failure_count, last_error
-		var lastModifiedStr string
+		// Scan result - expects columns: id, device_account, device_password, pack_count, last_used_at, pool_status, failure_count, last_error
+		var lastUsedStr sql.NullString
 		var lastError sql.NullString
+		var poolStatus sql.NullString
 		err := rows.Scan(
 			&account.ID,
-			&account.XMLPath,
+			&account.DeviceAccount,
+			&account.DevicePassword,
 			&account.PackCount,
-			&lastModifiedStr,
-			&account.Status,
+			&lastUsedStr,
+			&poolStatus,
 			&account.FailureCount,
 			&lastError,
 		)
@@ -261,10 +263,17 @@ func (p *SQLAccountPool) refresh() error {
 		}
 
 		// Parse timestamp
-		if lastModifiedStr != "" {
-			if t, err := time.Parse(time.RFC3339, lastModifiedStr); err == nil {
+		if lastUsedStr.Valid && lastUsedStr.String != "" {
+			if t, err := time.Parse(time.RFC3339, lastUsedStr.String); err == nil {
 				account.LastModified = t
 			}
+		}
+
+		// Handle pool status (default to available if null)
+		if poolStatus.Valid {
+			account.Status = AccountStatus(poolStatus.String)
+		} else {
+			account.Status = AccountStatusAvailable
 		}
 
 		// Handle nullable last error
@@ -272,11 +281,8 @@ func (p *SQLAccountPool) refresh() error {
 			account.LastError = lastError.String
 		}
 
-		// Validate XML path exists
-		if _, err := os.Stat(account.XMLPath); err != nil {
-			// File doesn't exist, skip this account
-			continue
-		}
+		// XMLPath will be generated on-demand when needed
+		account.XMLPath = ""
 
 		newAccounts[account.ID] = account
 	}
