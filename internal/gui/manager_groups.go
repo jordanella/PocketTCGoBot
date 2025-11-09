@@ -497,6 +497,10 @@ func (t *ManagerGroupsTab) createGroupCard(group *ManagerGroup) *fyne.Container 
 		group.refreshPoolBtn.Hide()
 	}
 
+	editBtn := widget.NewButton("Edit", func() {
+		t.editGroup(group)
+	})
+
 	deleteBtn := widget.NewButton("Delete", func() {
 		t.deleteGroup(group)
 	})
@@ -506,6 +510,7 @@ func (t *ManagerGroupsTab) createGroupCard(group *ManagerGroup) *fyne.Container 
 		group.stopBtn,
 		group.refreshPoolBtn,
 		layout.NewSpacer(),
+		editBtn,
 		deleteBtn,
 	)
 
@@ -627,6 +632,290 @@ func (t *ManagerGroupsTab) deleteGroup(group *ManagerGroup) {
 		},
 		t.controller.window,
 	)
+}
+
+// editGroup shows a dialog to edit an existing group
+func (t *ManagerGroupsTab) editGroup(group *ManagerGroup) {
+	if group.running {
+		dialog.ShowInformation("Cannot Edit", "Please stop the group before editing", t.controller.window)
+		return
+	}
+
+	// Form fields - pre-populate with current values
+	nameEntry := widget.NewEntry()
+	nameEntry.SetText(group.Name)
+	nameEntry.Disable() // Can't change name (it's the key)
+
+	routineEntry := widget.NewEntry()
+	routineEntry.SetPlaceHolder("e.g., farm_premium_packs.yaml")
+	routineEntry.SetText(group.RoutineName)
+
+	// Show available routines as helper text
+	var availableRoutinesText string
+	if len(t.availableRoutines) > 0 {
+		availableRoutinesText = fmt.Sprintf("Available: %s", strings.Join(t.availableRoutines, ", "))
+	} else {
+		availableRoutinesText = "No routines found in ./routines directory"
+	}
+	routineHelpLabel := widget.NewLabel(availableRoutinesText)
+	routineHelpLabel.Wrapping = fyne.TextWrapWord
+
+	instancesEntry := widget.NewEntry()
+	instancesEntry.SetPlaceHolder("e.g., 1-4 or 1,2,3,4")
+	instancesEntry.SetText(t.formatInstanceIDs(group.InstanceIDs))
+
+	// Pool selection
+	var poolOptions []string
+	poolOptions = append(poolOptions, "(None - No Account Pool)")
+	poolOptions = append(poolOptions, "(Legacy - File Browser)")
+
+	if t.poolManager != nil {
+		if err := t.poolManager.DiscoverPools(); err == nil {
+			pools := t.poolManager.ListPools()
+			for _, poolName := range pools {
+				poolOptions = append(poolOptions, poolName)
+			}
+		}
+	}
+
+	poolSelect := widget.NewSelect(poolOptions, nil)
+
+	// Set current pool selection
+	if group.PoolName != "" {
+		poolSelect.SetSelected(group.PoolName)
+	} else if group.AccountsPath != "" {
+		poolSelect.SetSelected("(Legacy - File Browser)")
+	} else {
+		poolSelect.SetSelected("(None - No Account Pool)")
+	}
+
+	// Legacy file browser
+	var accountsPath string = group.AccountsPath
+	accountsLabel := widget.NewLabel("No directory selected")
+	if group.AccountsPath != "" {
+		accountsLabel.SetText(filepath.Base(group.AccountsPath))
+	}
+
+	accountsBtn := widget.NewButton("Browse...", func() {
+		dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
+			if err == nil && uri != nil {
+				accountsPath = uri.Path()
+				accountsLabel.SetText(filepath.Base(accountsPath))
+			}
+		}, t.controller.window)
+	})
+	legacyFileContainer := container.NewHBox(accountsBtn, accountsLabel)
+
+	// Legacy pool config fields
+	minPacksEntry := widget.NewEntry()
+	minPacksEntry.SetText(strconv.Itoa(group.PoolConfig.MinPacks))
+
+	maxPacksEntry := widget.NewEntry()
+	maxPacksEntry.SetText(strconv.Itoa(group.PoolConfig.MaxPacks))
+
+	sortMethodSelect := widget.NewSelect([]string{
+		"Modified Ascending (oldest first)",
+		"Modified Descending (newest first)",
+		"Packs Ascending (fewest first)",
+		"Packs Descending (most first)",
+	}, nil)
+	sortMethodSelect.SetSelected(t.formatSortMethod(group.PoolConfig.SortMethod))
+
+	retryCheck := widget.NewCheck("Retry failed accounts", nil)
+	retryCheck.SetChecked(group.PoolConfig.RetryFailed)
+
+	maxFailuresEntry := widget.NewEntry()
+	maxFailuresEntry.SetText(strconv.Itoa(group.PoolConfig.MaxFailures))
+
+	legacyConfigContainer := container.NewVBox(
+		widget.NewLabel("Minimum Packs:"),
+		minPacksEntry,
+		widget.NewLabel("Maximum Packs:"),
+		maxPacksEntry,
+		widget.NewLabel("Sort Method:"),
+		sortMethodSelect,
+		retryCheck,
+		widget.NewLabel("Max Retry Attempts:"),
+		maxFailuresEntry,
+	)
+
+	// Show/hide legacy fields based on pool selection
+	if poolSelect.Selected == "(Legacy - File Browser)" {
+		legacyFileContainer.Show()
+		legacyConfigContainer.Show()
+	} else {
+		legacyFileContainer.Hide()
+		legacyConfigContainer.Hide()
+	}
+
+	poolSelect.OnChanged = func(selected string) {
+		if selected == "(Legacy - File Browser)" {
+			legacyFileContainer.Show()
+			legacyConfigContainer.Show()
+		} else {
+			legacyFileContainer.Hide()
+			legacyConfigContainer.Hide()
+		}
+	}
+
+	// Form layout
+	form := container.NewVBox(
+		widget.NewLabelWithStyle("Edit Group", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabel("Group Name (cannot be changed):"),
+		nameEntry,
+		widget.NewLabel("Routine:"),
+		routineEntry,
+		routineHelpLabel,
+		widget.NewLabel("Bot Instances:"),
+		instancesEntry,
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Account Pool", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabel("Select Pool:"),
+		poolSelect,
+		legacyFileContainer,
+		legacyConfigContainer,
+	)
+
+	// Create dialog
+	formDialog := dialog.NewCustomConfirm("Edit Manager Group", "Save", "Cancel",
+		container.NewVScroll(form),
+		func(confirmed bool) {
+			if !confirmed {
+				return
+			}
+
+			// Update group
+			if err := t.updateGroup(
+				group,
+				routineEntry.Text,
+				instancesEntry.Text,
+				poolSelect.Selected,
+				accountsPath,
+				minPacksEntry.Text,
+				maxPacksEntry.Text,
+				sortMethodSelect.Selected,
+				retryCheck.Checked,
+				maxFailuresEntry.Text,
+			); err != nil {
+				dialog.ShowError(err, t.controller.window)
+			}
+		},
+		t.controller.window,
+	)
+
+	formDialog.Resize(fyne.NewSize(500, 700))
+	formDialog.Show()
+}
+
+// updateGroup updates an existing manager group
+func (t *ManagerGroupsTab) updateGroup(
+	group *ManagerGroup,
+	routineDisplay, instancesStr, poolSelection, accountsPath,
+	minPacksStr, maxPacksStr, sortMethodStr string,
+	retryFailed bool, maxFailuresStr string,
+) error {
+	// Validate inputs
+	if routineDisplay == "" {
+		return fmt.Errorf("routine name is required")
+	}
+	if instancesStr == "" {
+		return fmt.Errorf("bot instances are required")
+	}
+
+	// Get routine filename
+	routineName := t.displayToFilename[routineDisplay]
+	if routineName == "" {
+		routineName = routineDisplay // Fallback to selected value
+	}
+
+	// Parse instance IDs
+	instanceIDs, err := t.parseInstanceIDs(instancesStr)
+	if err != nil {
+		return fmt.Errorf("invalid instance IDs: %w", err)
+	}
+
+	// Create new manager with global registries
+	newManager := bot.NewManagerWithRegistries(
+		t.controller.config,
+		t.templateRegistry,
+		t.routineRegistry,
+	)
+
+	// Create account pool based on selection
+	var pool accountpool.AccountPool
+	var poolName string
+	var poolConfig accountpool.PoolConfig
+
+	if poolSelection != "(None - No Account Pool)" && poolSelection != "" {
+		if poolSelection == "(Legacy - File Browser)" {
+			// Legacy file-based pool
+			if accountsPath == "" {
+				return fmt.Errorf("accounts directory is required for legacy file pool")
+			}
+
+			minPacks, _ := strconv.Atoi(minPacksStr)
+			maxPacks, _ := strconv.Atoi(maxPacksStr)
+			maxFailures, _ := strconv.Atoi(maxFailuresStr)
+			if maxFailures == 0 {
+				maxFailures = 3
+			}
+
+			sortMethod := t.parseSortMethod(sortMethodStr)
+
+			poolConfig = accountpool.PoolConfig{
+				MinPacks:        minPacks,
+				MaxPacks:        maxPacks,
+				SortMethod:      sortMethod,
+				RetryFailed:     retryFailed,
+				MaxFailures:     maxFailures,
+				WaitForAccounts: true,
+				MaxWaitTime:     5 * time.Minute,
+				BufferSize:      100,
+			}
+
+			pool, err = accountpool.NewFileAccountPool(accountsPath, poolConfig)
+			if err != nil {
+				return fmt.Errorf("failed to create file account pool: %w", err)
+			}
+		} else {
+			// Pool from PoolManager
+			if t.poolManager == nil {
+				return fmt.Errorf("pool manager not available (database not initialized)")
+			}
+
+			pool, err = t.poolManager.GetPool(poolSelection)
+			if err != nil {
+				return fmt.Errorf("failed to get pool '%s': %w", poolSelection, err)
+			}
+			poolName = poolSelection
+		}
+
+		newManager.SetAccountPool(pool)
+	}
+
+	// Close old pool if different from new
+	if group.AccountPool != nil && group.AccountPool != pool {
+		group.AccountPool.Close()
+	}
+
+	// Update group fields
+	group.RoutineName = routineName
+	group.InstanceIDs = instanceIDs
+	group.AccountsPath = accountsPath
+	group.PoolName = poolName
+	group.PoolConfig = poolConfig
+	group.AccountPool = pool
+	group.Manager = newManager
+
+	// Recreate the card to reflect changes
+	t.groupsContainer.Remove(group.card)
+	group.card = t.createGroupCard(group)
+	t.groupsContainer.Add(group.card)
+	t.groupsContainer.Refresh()
+
+	t.controller.logTab.AddLog(LogLevelInfo, 0, fmt.Sprintf("Updated group '%s'", group.Name))
+
+	return nil
 }
 
 // refreshGroupPool refreshes a pool from PoolManager
@@ -769,6 +1058,47 @@ func (t *ManagerGroupsTab) parseSortMethod(str string) accountpool.SortMethod {
 	default:
 		return accountpool.SortMethodModifiedAsc
 	}
+}
+
+func (t *ManagerGroupsTab) formatSortMethod(method accountpool.SortMethod) string {
+	switch method {
+	case accountpool.SortMethodModifiedAsc:
+		return "Modified Ascending (oldest first)"
+	case accountpool.SortMethodModifiedDesc:
+		return "Modified Descending (newest first)"
+	case accountpool.SortMethodPacksAsc:
+		return "Packs Ascending (fewest first)"
+	case accountpool.SortMethodPacksDesc:
+		return "Packs Descending (most first)"
+	default:
+		return "Modified Ascending (oldest first)"
+	}
+}
+
+func (t *ManagerGroupsTab) formatInstanceIDs(ids []int) string {
+	if len(ids) == 0 {
+		return ""
+	}
+
+	// Check if they're consecutive
+	isConsecutive := true
+	for i := 1; i < len(ids); i++ {
+		if ids[i] != ids[i-1]+1 {
+			isConsecutive = false
+			break
+		}
+	}
+
+	if isConsecutive && len(ids) > 1 {
+		return fmt.Sprintf("%d-%d", ids[0], ids[len(ids)-1])
+	}
+
+	// Otherwise, comma-separated
+	strs := make([]string, len(ids))
+	for i, id := range ids {
+		strs[i] = strconv.Itoa(id)
+	}
+	return strings.Join(strs, ",")
 }
 
 func (t *ManagerGroupsTab) getRoutineDisplayNames() []string {
