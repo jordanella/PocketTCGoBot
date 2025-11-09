@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
+	"jordanella.com/pocket-tcg-go/internal/accountpool"
 	"jordanella.com/pocket-tcg-go/internal/bot"
 	"jordanella.com/pocket-tcg-go/internal/database"
 	"jordanella.com/pocket-tcg-go/internal/emulator"
@@ -29,15 +30,17 @@ type Controller struct {
 	mumuInstancesMu sync.RWMutex
 
 	// GUI components
-	dashboard      *DashboardTab
-	configTab      *ConfigTab
-	logTab         *LogTab
-	accountTab     *AccountTab
-	resultsTab     *ResultsTab
-	controlTab     *ControlTab
-	adbTestTab     *ADBTestTab
-	routinesTab    *RoutinesEnhancedTab
-	botLauncherTab *BotLauncherTab
+	dashboard         *DashboardTab
+	configTab         *ConfigTab
+	logTab            *LogTab
+	accountTab        *AccountTab
+	resultsTab        *ResultsTab
+	controlTab        *ControlTab
+	adbTestTab        *ADBTestTab
+	routinesTab       *RoutinesEnhancedTab
+	botLauncherTab    *BotLauncherTab
+	managerGroupsTab  *ManagerGroupsTab
+	accountPoolsTab   *AccountPoolsTab
 
 	// Database tabs
 	db              *database.DB
@@ -93,6 +96,7 @@ func NewController(cfg *bot.Config, app fyne.App, window fyne.Window) *Controlle
 
 	ctrl.routinesTab = NewRoutinesEnhancedTab(ctrl, manager)
 	ctrl.botLauncherTab = NewBotLauncherTab(ctrl)
+	ctrl.managerGroupsTab = NewManagerGroupsTab(ctrl)
 
 	// Initialize database after log tab is ready
 	ctrl.initializeDatabase()
@@ -149,6 +153,17 @@ func (c *Controller) initializeDatabase() {
 	c.dbErrorsTab = NewDatabaseErrorsTab(c, c.db)
 	c.dbPacksTab = NewDatabasePacksTab(c, c.db)
 	c.dbCollectionTab = NewDatabaseCollectionTab(c, c.db)
+
+	// Initialize Account Pools tab
+	if c.db != nil {
+		// Create pool manager
+		poolsDir := "pools"
+		poolManager := accountpool.NewPoolManager(poolsDir, c.db.Conn())
+		c.accountPoolsTab = NewAccountPoolsTab(c, poolManager, c.db.Conn())
+	} else {
+		// Database not available - pools tab will not be functional
+		c.accountPoolsTab = nil
+	}
 }
 
 // BuildUI constructs the main UI with horizontal tabs
@@ -157,23 +172,37 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 	tabButtons := container.NewHBox(
 		widget.NewButton("Dashboard", func() { c.switchTab(0) }),
 		widget.NewButton("Bot Launcher", func() { c.switchTab(1) }),
-		widget.NewButton("Configuration", func() { c.switchTab(2) }),
-		widget.NewButton("Event Log", func() { c.switchTab(3) }),
-		widget.NewButton("Accounts", func() { c.switchTab(4) }),
-		widget.NewButton("Results", func() { c.switchTab(5) }),
-		widget.NewButton("Controls", func() { c.switchTab(6) }),
-		widget.NewButton("ADB Test", func() { c.switchTab(7) }),
-		widget.NewButton("Routines", func() { c.switchTab(8) }),
-		widget.NewButton("Database", func() { c.switchTab(9) }),
+		widget.NewButton("Manager Groups", func() { c.switchTab(2) }),
+		widget.NewButton("Account Pools", func() { c.switchTab(3) }),
+		widget.NewButton("Configuration", func() { c.switchTab(4) }),
+		widget.NewButton("Event Log", func() { c.switchTab(5) }),
+		widget.NewButton("Accounts", func() { c.switchTab(6) }),
+		widget.NewButton("Results", func() { c.switchTab(7) }),
+		widget.NewButton("Controls", func() { c.switchTab(8) }),
+		widget.NewButton("ADB Test", func() { c.switchTab(9) }),
+		widget.NewButton("Routines", func() { c.switchTab(10) }),
+		widget.NewButton("Database", func() { c.switchTab(11) }),
 	)
 
 	// Create database tab with nested tabs (after database tabs are initialized)
 	c.dbTabContainer = c.buildDatabaseTab()
 
+	// Build account pools content (or placeholder if nil)
+	var accountPoolsContent fyne.CanvasObject
+	if c.accountPoolsTab != nil {
+		accountPoolsContent = c.accountPoolsTab.Content()
+	} else {
+		accountPoolsContent = container.NewCenter(
+			widget.NewLabel("Account Pools requires database connection"),
+		)
+	}
+
 	// Create content area (will switch based on selected tab)
 	c.contentArea = container.NewStack(
 		c.dashboard.Build(),
 		c.botLauncherTab.Build(),
+		c.managerGroupsTab.Build(),
+		accountPoolsContent,
 		c.configTab.Build(),
 		c.logTab.Build(),
 		c.accountTab.Build(),
