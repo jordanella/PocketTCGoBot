@@ -500,7 +500,7 @@ func (t *AccountPoolsTab) showSQLPoolWizard(name string) {
 func (t *AccountPoolsTab) showSQLPoolEditor(poolDef *accountpool.PoolDefinition) {
 	queryDef := poolDef.Config.(*accountpool.QueryDefinition)
 
-	qb := NewQueryBuilder(t.controller.window, queryDef.Name, func(updatedQueryDef *accountpool.QueryDefinition) {
+	qb := NewQueryBuilderFromDefinition(t.controller.window, queryDef, func(updatedQueryDef *accountpool.QueryDefinition) {
 		// Update pool definition
 		poolDef.Name = updatedQueryDef.Name
 		poolDef.Config = updatedQueryDef
@@ -514,8 +514,6 @@ func (t *AccountPoolsTab) showSQLPoolEditor(poolDef *accountpool.PoolDefinition)
 		t.showInfo(fmt.Sprintf("Pool '%s' updated successfully", updatedQueryDef.Name))
 		t.refreshPoolList()
 	})
-
-	// TODO: Load existing query definition into query builder
 
 	qb.Show()
 }

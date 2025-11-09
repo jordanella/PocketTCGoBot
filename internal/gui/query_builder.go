@@ -103,6 +103,67 @@ func NewQueryBuilder(window fyne.Window, poolName string, onSave func(*accountpo
 	}
 
 	qb.buildUI()
+
+	// Add initial filter
+	qb.addFilter()
+	qb.updatePreview()
+
+	return qb
+}
+
+// NewQueryBuilderFromDefinition creates a query builder from an existing definition
+func NewQueryBuilderFromDefinition(window fyne.Window, queryDef *accountpool.QueryDefinition, onSave func(*accountpool.QueryDefinition)) *QueryBuilder {
+	qb := &QueryBuilder{
+		window:          window,
+		poolName:        queryDef.Name,
+		poolDescription: queryDef.Description,
+		onSave:          onSave,
+		filters:         make([]*FilterRow, 0),
+		sortFields:      make([]*SortRow, 0),
+		limitValue:      50,
+		retryFailed:     queryDef.PoolConfig.RetryFailed,
+		maxFailures:     queryDef.PoolConfig.MaxFailures,
+		waitForAccounts: queryDef.PoolConfig.WaitForAccounts,
+		maxWaitTime:     queryDef.PoolConfig.MaxWaitTime,
+		bufferSize:      queryDef.PoolConfig.BufferSize,
+		refreshInterval: queryDef.PoolConfig.RefreshInterval,
+	}
+
+	// Load GUI config if available
+	if queryDef.GUIConfig != nil {
+		qb.limitValue = queryDef.GUIConfig.Limit
+	}
+
+	qb.buildUI()
+
+	// Load filters after UI is built
+	if queryDef.GUIConfig != nil {
+		for _, filterConfig := range queryDef.GUIConfig.Filters {
+			qb.addFilter()
+			row := qb.filters[len(qb.filters)-1]
+
+			row.fieldSelect.SetSelected(filterConfig.Field)
+			row.operatorSelect.SetSelected(filterConfig.Operator)
+
+			if filterConfig.Value != nil {
+				row.valueEntry.SetText(fmt.Sprint(filterConfig.Value))
+			}
+		}
+
+		// Load sorts
+		for _, sortConfig := range queryDef.GUIConfig.Sort {
+			qb.addSortField()
+			row := qb.sortFields[len(qb.sortFields)-1]
+
+			row.fieldSelect.SetSelected(sortConfig.Field)
+			row.directionSelect.SetSelected(sortConfig.Direction)
+		}
+	} else {
+		// No GUI config, add one default filter
+		qb.addFilter()
+	}
+
+	qb.updatePreview()
 	return qb
 }
 
@@ -208,10 +269,6 @@ func (qb *QueryBuilder) buildUI() {
 		nil,
 		mainContent,
 	)
-
-	// Add initial filter
-	qb.addFilter()
-	qb.updatePreview()
 }
 
 // buildPoolConfigSection creates the pool configuration section
@@ -259,7 +316,22 @@ func (qb *QueryBuilder) buildPoolConfigSection() *widget.Card {
 			}
 		},
 	)
-	refreshSelect.SetSelected("30 seconds")
+
+	// Set initial selection based on current refresh interval
+	switch qb.refreshInterval {
+	case 0:
+		refreshSelect.SetSelected("No auto-refresh")
+	case 30 * time.Second:
+		refreshSelect.SetSelected("30 seconds")
+	case 1 * time.Minute:
+		refreshSelect.SetSelected("1 minute")
+	case 2 * time.Minute:
+		refreshSelect.SetSelected("2 minutes")
+	case 5 * time.Minute:
+		refreshSelect.SetSelected("5 minutes")
+	default:
+		refreshSelect.SetSelected("30 seconds")
+	}
 
 	form := widget.NewForm(
 		widget.NewFormItem("", retryCheck),
@@ -515,6 +587,32 @@ func (qb *QueryBuilder) savePool() {
 		})
 	}
 
+	// Build GUI config for editing
+	guiFilters := make([]accountpool.FilterConfig, 0)
+	for _, filter := range qb.filters {
+		if filter.fieldSelect.Selected == "" {
+			continue
+		}
+
+		guiFilters = append(guiFilters, accountpool.FilterConfig{
+			Field:    filter.fieldSelect.Selected,
+			Operator: filter.operatorSelect.Selected,
+			Value:    filter.valueEntry.Text,
+		})
+	}
+
+	guiSorts := make([]accountpool.SortConfig, 0)
+	for _, sort := range qb.sortFields {
+		if sort.fieldSelect.Selected == "" {
+			continue
+		}
+
+		guiSorts = append(guiSorts, accountpool.SortConfig{
+			Field:     sort.fieldSelect.Selected,
+			Direction: sort.directionSelect.Selected,
+		})
+	}
+
 	// Build query definition
 	queryDef := &accountpool.QueryDefinition{
 		Name:        qb.poolName,
@@ -532,6 +630,11 @@ func (qb *QueryBuilder) savePool() {
 			MaxWaitTime:     qb.maxWaitTime,
 			BufferSize:      qb.bufferSize,
 			RefreshInterval: qb.refreshInterval,
+		},
+		GUIConfig: &accountpool.GUIQueryConfig{
+			Filters: guiFilters,
+			Sort:    guiSorts,
+			Limit:   qb.limitValue,
 		},
 	}
 
