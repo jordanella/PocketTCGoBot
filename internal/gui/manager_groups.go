@@ -28,6 +28,7 @@ type ManagerGroupsTab struct {
 	// Global registries (loaded once, shared by all managers)
 	templateRegistry *templates.TemplateRegistry
 	routineRegistry  *actions.RoutineRegistry
+	poolManager      *accountpool.PoolManager
 
 	// Manager groups
 	groups   map[string]*ManagerGroup
@@ -50,7 +51,8 @@ type ManagerGroup struct {
 	Manager      *bot.Manager
 	RoutineName  string
 	InstanceIDs  []int
-	AccountsPath string
+	AccountsPath string // Legacy: file-based pool path
+	PoolName     string // Name of selected pool from PoolManager
 	PoolConfig   accountpool.PoolConfig
 	AccountPool  accountpool.AccountPool
 
@@ -60,6 +62,7 @@ type ManagerGroup struct {
 	poolStatsLabel *widget.Label
 	startBtn       *widget.Button
 	stopBtn        *widget.Button
+	refreshPoolBtn *widget.Button
 
 	// Runtime state
 	running bool
@@ -191,6 +194,24 @@ func (t *ManagerGroupsTab) showCreateGroupDialog() {
 	instancesEntry.SetPlaceHolder("e.g., 1-4 or 1,2,3,4")
 	instancesEntry.SetText("1-4")
 
+	// Pool selection
+	var poolOptions []string
+	poolOptions = append(poolOptions, "(None - No Account Pool)")
+	poolOptions = append(poolOptions, "(Legacy - File Browser)")
+
+	if t.poolManager != nil {
+		if err := t.poolManager.DiscoverPools(); err == nil {
+			pools := t.poolManager.ListPools()
+			for _, poolName := range pools {
+				poolOptions = append(poolOptions, poolName)
+			}
+		}
+	}
+
+	poolSelect := widget.NewSelect(poolOptions, nil)
+	poolSelect.SetSelected("(None - No Account Pool)")
+
+	// Legacy file browser (hidden by default, shown when "Legacy - File Browser" is selected)
 	var accountsPath string
 	accountsLabel := widget.NewLabel("No directory selected")
 	accountsBtn := widget.NewButton("Browse...", func() {
@@ -201,7 +222,10 @@ func (t *ManagerGroupsTab) showCreateGroupDialog() {
 			}
 		}, t.controller.window)
 	})
+	legacyFileContainer := container.NewHBox(accountsBtn, accountsLabel)
+	legacyFileContainer.Hide()
 
+	// Legacy pool config fields (hidden by default, shown when using file browser)
 	minPacksEntry := widget.NewEntry()
 	minPacksEntry.SetPlaceHolder("0")
 	minPacksEntry.SetText("0")
@@ -225,6 +249,30 @@ func (t *ManagerGroupsTab) showCreateGroupDialog() {
 	maxFailuresEntry.SetPlaceHolder("3")
 	maxFailuresEntry.SetText("3")
 
+	legacyConfigContainer := container.NewVBox(
+		widget.NewLabel("Minimum Packs:"),
+		minPacksEntry,
+		widget.NewLabel("Maximum Packs:"),
+		maxPacksEntry,
+		widget.NewLabel("Sort Method:"),
+		sortMethodSelect,
+		retryCheck,
+		widget.NewLabel("Max Retry Attempts:"),
+		maxFailuresEntry,
+	)
+	legacyConfigContainer.Hide()
+
+	// Show/hide legacy fields based on pool selection
+	poolSelect.OnChanged = func(selected string) {
+		if selected == "(Legacy - File Browser)" {
+			legacyFileContainer.Show()
+			legacyConfigContainer.Show()
+		} else {
+			legacyFileContainer.Hide()
+			legacyConfigContainer.Hide()
+		}
+	}
+
 	// Form layout
 	form := container.NewVBox(
 		widget.NewLabelWithStyle("Group Configuration", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -236,18 +284,11 @@ func (t *ManagerGroupsTab) showCreateGroupDialog() {
 		widget.NewLabel("Bot Instances:"),
 		instancesEntry,
 		widget.NewSeparator(),
-		widget.NewLabelWithStyle("Account Pool (Optional)", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		widget.NewLabel("Accounts Directory:"),
-		container.NewHBox(accountsBtn, accountsLabel),
-		widget.NewLabel("Minimum Packs:"),
-		minPacksEntry,
-		widget.NewLabel("Maximum Packs:"),
-		maxPacksEntry,
-		widget.NewLabel("Sort Method:"),
-		sortMethodSelect,
-		retryCheck,
-		widget.NewLabel("Max Retry Attempts:"),
-		maxFailuresEntry,
+		widget.NewLabelWithStyle("Account Pool", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabel("Select Pool:"),
+		poolSelect,
+		legacyFileContainer,
+		legacyConfigContainer,
 	)
 
 	// Create dialog
@@ -263,6 +304,7 @@ func (t *ManagerGroupsTab) showCreateGroupDialog() {
 				nameEntry.Text,
 				routineEntry.Text,
 				instancesEntry.Text,
+				poolSelect.Selected,
 				accountsPath,
 				minPacksEntry.Text,
 				maxPacksEntry.Text,
@@ -282,7 +324,7 @@ func (t *ManagerGroupsTab) showCreateGroupDialog() {
 
 // createGroup creates a new manager group
 func (t *ManagerGroupsTab) createGroup(
-	name, routineDisplay, instancesStr, accountsPath,
+	name, routineDisplay, instancesStr, poolSelection, accountsPath,
 	minPacksStr, maxPacksStr, sortMethodStr string,
 	retryFailed bool, maxFailuresStr string,
 ) error {
@@ -317,27 +359,6 @@ func (t *ManagerGroupsTab) createGroup(
 		return fmt.Errorf("invalid instance IDs: %w", err)
 	}
 
-	// Parse pool config
-	minPacks, _ := strconv.Atoi(minPacksStr)
-	maxPacks, _ := strconv.Atoi(maxPacksStr)
-	maxFailures, _ := strconv.Atoi(maxFailuresStr)
-	if maxFailures == 0 {
-		maxFailures = 3
-	}
-
-	sortMethod := t.parseSortMethod(sortMethodStr)
-
-	poolConfig := accountpool.PoolConfig{
-		MinPacks:        minPacks,
-		MaxPacks:        maxPacks,
-		SortMethod:      sortMethod,
-		RetryFailed:     retryFailed,
-		MaxFailures:     maxFailures,
-		WaitForAccounts: true,
-		MaxWaitTime:     5 * time.Minute,
-		BufferSize:      100,
-	}
-
 	// Create manager with global registries
 	manager := bot.NewManagerWithRegistries(
 		t.controller.config,
@@ -345,13 +366,55 @@ func (t *ManagerGroupsTab) createGroup(
 		t.routineRegistry,
 	)
 
-	// Create account pool if path provided
+	// Create account pool based on selection
 	var pool accountpool.AccountPool
-	if accountsPath != "" {
-		pool, err = accountpool.NewFileAccountPool(accountsPath, poolConfig)
-		if err != nil {
-			return fmt.Errorf("failed to create account pool: %w", err)
+	var poolName string
+	var poolConfig accountpool.PoolConfig
+
+	if poolSelection != "(None - No Account Pool)" && poolSelection != "" {
+		if poolSelection == "(Legacy - File Browser)" {
+			// Legacy file-based pool
+			if accountsPath == "" {
+				return fmt.Errorf("accounts directory is required for legacy file pool")
+			}
+
+			minPacks, _ := strconv.Atoi(minPacksStr)
+			maxPacks, _ := strconv.Atoi(maxPacksStr)
+			maxFailures, _ := strconv.Atoi(maxFailuresStr)
+			if maxFailures == 0 {
+				maxFailures = 3
+			}
+
+			sortMethod := t.parseSortMethod(sortMethodStr)
+
+			poolConfig = accountpool.PoolConfig{
+				MinPacks:        minPacks,
+				MaxPacks:        maxPacks,
+				SortMethod:      sortMethod,
+				RetryFailed:     retryFailed,
+				MaxFailures:     maxFailures,
+				WaitForAccounts: true,
+				MaxWaitTime:     5 * time.Minute,
+				BufferSize:      100,
+			}
+
+			pool, err = accountpool.NewFileAccountPool(accountsPath, poolConfig)
+			if err != nil {
+				return fmt.Errorf("failed to create file account pool: %w", err)
+			}
+		} else {
+			// Pool from PoolManager
+			if t.poolManager == nil {
+				return fmt.Errorf("pool manager not available (database not initialized)")
+			}
+
+			pool, err = t.poolManager.GetPool(poolSelection)
+			if err != nil {
+				return fmt.Errorf("failed to get pool '%s': %w", poolSelection, err)
+			}
+			poolName = poolSelection
 		}
+
 		manager.SetAccountPool(pool)
 	}
 
@@ -361,7 +424,8 @@ func (t *ManagerGroupsTab) createGroup(
 		Manager:      manager,
 		RoutineName:  routineName,
 		InstanceIDs:  instanceIDs,
-		AccountsPath: accountsPath,
+		AccountsPath: accountsPath, // Only used for legacy file pools
+		PoolName:     poolName,     // Name of pool from PoolManager
 		PoolConfig:   poolConfig,
 		AccountPool:  pool,
 		running:      false,
@@ -403,9 +467,12 @@ func (t *ManagerGroupsTab) createGroupCard(group *ManagerGroup) *fyne.Container 
 	routineLabel := widget.NewLabel(fmt.Sprintf("Routine: %s", group.RoutineName))
 	instancesLabel := widget.NewLabel(fmt.Sprintf("Bots: %v", group.InstanceIDs))
 
+	// Pool information
 	poolLabel := widget.NewLabel("Accounts: None")
-	if group.AccountsPath != "" {
-		poolLabel.SetText(fmt.Sprintf("Accounts: %s", filepath.Base(group.AccountsPath)))
+	if group.PoolName != "" {
+		poolLabel.SetText(fmt.Sprintf("Pool: %s", group.PoolName))
+	} else if group.AccountsPath != "" {
+		poolLabel.SetText(fmt.Sprintf("Accounts: %s (Legacy)", filepath.Base(group.AccountsPath)))
 	}
 
 	group.poolStatsLabel = widget.NewLabel("Pool: Not started")
@@ -422,6 +489,14 @@ func (t *ManagerGroupsTab) createGroupCard(group *ManagerGroup) *fyne.Container 
 	group.stopBtn.Importance = widget.DangerImportance
 	group.stopBtn.Disable()
 
+	// Refresh pool button (only for named pools from PoolManager)
+	group.refreshPoolBtn = widget.NewButton("Refresh Pool", func() {
+		t.refreshGroupPool(group)
+	})
+	if group.PoolName == "" {
+		group.refreshPoolBtn.Hide()
+	}
+
 	deleteBtn := widget.NewButton("Delete", func() {
 		t.deleteGroup(group)
 	})
@@ -429,6 +504,7 @@ func (t *ManagerGroupsTab) createGroupCard(group *ManagerGroup) *fyne.Container 
 	controls := container.NewHBox(
 		group.startBtn,
 		group.stopBtn,
+		group.refreshPoolBtn,
 		layout.NewSpacer(),
 		deleteBtn,
 	)
@@ -548,6 +624,63 @@ func (t *ManagerGroupsTab) deleteGroup(group *ManagerGroup) {
 
 			t.updateStatusLabel()
 			t.controller.logTab.AddLog(LogLevelInfo, 0, fmt.Sprintf("Deleted group '%s'", group.Name))
+		},
+		t.controller.window,
+	)
+}
+
+// refreshGroupPool refreshes a pool from PoolManager
+func (t *ManagerGroupsTab) refreshGroupPool(group *ManagerGroup) {
+	if group.PoolName == "" {
+		dialog.ShowInformation("No Pool", "This group does not use a managed pool", t.controller.window)
+		return
+	}
+
+	if t.poolManager == nil {
+		dialog.ShowError(fmt.Errorf("pool manager not available"), t.controller.window)
+		return
+	}
+
+	// Confirm refresh
+	dialog.ShowConfirm("Refresh Pool",
+		fmt.Sprintf("Refresh pool '%s'? This will re-execute the pool query to get updated accounts.", group.PoolName),
+		func(confirmed bool) {
+			if !confirmed {
+				return
+			}
+
+			// Refresh the pool
+			if err := t.poolManager.RefreshPool(group.PoolName); err != nil {
+				dialog.ShowError(fmt.Errorf("failed to refresh pool: %w", err), t.controller.window)
+				return
+			}
+
+			// Get updated pool instance
+			pool, err := t.poolManager.GetPool(group.PoolName)
+			if err != nil {
+				dialog.ShowError(fmt.Errorf("failed to get refreshed pool: %w", err), t.controller.window)
+				return
+			}
+
+			// Update group's pool
+			oldPool := group.AccountPool
+			group.AccountPool = pool
+			group.Manager.SetAccountPool(pool)
+
+			// Close old pool if it was different
+			if oldPool != nil && oldPool != pool {
+				oldPool.Close()
+			}
+
+			// Update stats display
+			stats := pool.GetStats()
+			group.poolStatsLabel.SetText(fmt.Sprintf(
+				"Pool: %d total | %d available | %d in use | %d completed | %d failed",
+				stats.Total, stats.Available, stats.InUse, stats.Completed, stats.Failed,
+			))
+
+			t.controller.logTab.AddLog(LogLevelInfo, 0, fmt.Sprintf("Refreshed pool '%s' for group '%s'", group.PoolName, group.Name))
+			dialog.ShowInformation("Pool Refreshed", fmt.Sprintf("Pool '%s' refreshed successfully.\nTotal accounts: %d", group.PoolName, stats.Total), t.controller.window)
 		},
 		t.controller.window,
 	)

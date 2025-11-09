@@ -44,6 +44,7 @@ type Controller struct {
 
 	// Database tabs
 	db              *database.DB
+	poolManager     *accountpool.PoolManager
 	dbAccountsTab   *DatabaseAccountsTab
 	dbActivityTab   *DatabaseActivityTab
 	dbErrorsTab     *DatabaseErrorsTab
@@ -154,14 +155,20 @@ func (c *Controller) initializeDatabase() {
 	c.dbPacksTab = NewDatabasePacksTab(c, c.db)
 	c.dbCollectionTab = NewDatabaseCollectionTab(c, c.db)
 
-	// Initialize Account Pools tab
+	// Initialize Account Pools tab and PoolManager
 	if c.db != nil {
 		// Create pool manager
 		poolsDir := "pools"
-		poolManager := accountpool.NewPoolManager(poolsDir, c.db.Conn())
-		c.accountPoolsTab = NewAccountPoolsTab(c, poolManager, c.db.Conn())
+		c.poolManager = accountpool.NewPoolManager(poolsDir, c.db.Conn())
+		c.accountPoolsTab = NewAccountPoolsTab(c, c.poolManager, c.db.Conn())
+
+		// Update Manager Groups tab with pool manager
+		if c.managerGroupsTab != nil {
+			c.managerGroupsTab.poolManager = c.poolManager
+		}
 	} else {
 		// Database not available - pools tab will not be functional
+		c.poolManager = nil
 		c.accountPoolsTab = nil
 	}
 }
