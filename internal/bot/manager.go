@@ -194,6 +194,8 @@ func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy Re
 			if err != nil {
 				fmt.Printf("Bot %d: Warning - failed to start routine tracking: %v\n", instance, err)
 			} else {
+				// Store execution_id in bot variables for UpdateRoutineMetrics action
+				bot.Variables().Set("execution_id", fmt.Sprintf("%d", executionID))
 				fmt.Printf("Bot %d: Started routine execution tracking (ID: %d)\n", instance, executionID)
 			}
 		}
