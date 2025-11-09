@@ -159,6 +159,7 @@ func (m *Manager) RestartBot(instance int) (string, error) {
 func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy RestartPolicy) error {
 	m.mu.RLock()
 	bot, exists := m.bots[instance]
+	pool := m.accountPool
 	m.mu.RUnlock()
 
 	if !exists {
@@ -172,6 +173,35 @@ func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy Re
 	routineBuilder, err := bot.Routines().Get(routineName)
 	if err != nil {
 		return fmt.Errorf("failed to get routine '%s': %w", routineName, err)
+	}
+
+	// Get account from pool if available
+	var account *accountpool.Account
+	if pool != nil {
+		ctx := bot.Context()
+		poolAccount, err := pool.GetNext(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get account from pool: %w", err)
+		}
+		account = poolAccount
+
+		// Inject account into bot
+		if err := bot.InjectAccount(account.XMLPath); err != nil {
+			// Return account to pool on injection failure
+			pool.Return(account)
+			return fmt.Errorf("failed to inject account: %w", err)
+		}
+
+		fmt.Printf("Bot %d: Injected account '%s' from pool\n", instance, account.ID)
+
+		// Ensure account is returned to pool on function exit
+		defer func() {
+			if err := pool.Return(account); err != nil {
+				fmt.Printf("Bot %d: Warning - failed to return account to pool: %v\n", instance, err)
+			} else {
+				fmt.Printf("Bot %d: Returned account '%s' to pool\n", instance, account.ID)
+			}
+		}()
 	}
 
 	// If restart is not enabled, execute once and return
