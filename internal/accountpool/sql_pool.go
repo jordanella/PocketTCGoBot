@@ -405,6 +405,13 @@ func (p *SQLAccountPool) GetNext(ctx context.Context) (*Account, error) {
 		account.Status = AccountStatusInUse
 		now := time.Now()
 		account.AssignedAt = &now
+
+		// Persist status to database
+		if err := p.updateAccountStatus(account); err != nil {
+			p.mu.Unlock()
+			return nil, fmt.Errorf("failed to update account status: %w", err)
+		}
+
 		p.mu.Unlock()
 		return account, nil
 
@@ -422,6 +429,13 @@ func (p *SQLAccountPool) GetNext(ctx context.Context) (*Account, error) {
 				account.Status = AccountStatusInUse
 				now := time.Now()
 				account.AssignedAt = &now
+
+				// Persist status to database
+				if err := p.updateAccountStatus(account); err != nil {
+					p.mu.Unlock()
+					return nil, fmt.Errorf("failed to update account status: %w", err)
+				}
+
 				p.mu.Unlock()
 				return account, nil
 			}
@@ -474,6 +488,11 @@ func (p *SQLAccountPool) Return(account *Account) error {
 	account.AssignedAt = nil
 	account.AssignedTo = 0
 
+	// Persist status to database
+	if err := p.updateAccountStatus(account); err != nil {
+		return fmt.Errorf("failed to update account status: %w", err)
+	}
+
 	// Add back to available channel if there's room
 	select {
 	case p.available <- account:
@@ -516,6 +535,11 @@ func (p *SQLAccountPool) MarkUsed(account *Account, result AccountResult) error 
 		}
 	}
 
+	// Persist status to database
+	if err := p.updateAccountStatus(account); err != nil {
+		return fmt.Errorf("failed to update account status: %w", err)
+	}
+
 	// Update stats
 	p.updateStats()
 
@@ -534,6 +558,11 @@ func (p *SQLAccountPool) MarkFailed(account *Account, reason string) error {
 	account.FailureCount++
 	account.LastError = reason
 	account.Status = AccountStatusFailed
+
+	// Persist status to database
+	if err := p.updateAccountStatus(account); err != nil {
+		return fmt.Errorf("failed to update account status: %w", err)
+	}
 
 	// Update stats
 	p.updateStats()
@@ -581,6 +610,33 @@ func (p *SQLAccountPool) Close() error {
 	close(p.available)
 
 	return nil
+}
+
+// updateAccountStatus persists the account status to the database
+// NOTE: This method should be called with the mutex held
+func (p *SQLAccountPool) updateAccountStatus(account *Account) error {
+	var completedAt sql.NullString
+	if account.ProcessedAt != nil {
+		completedAt.Valid = true
+		completedAt.String = account.ProcessedAt.Format(time.RFC3339)
+	}
+
+	var lastError sql.NullString
+	if account.LastError != "" {
+		lastError.Valid = true
+		lastError.String = account.LastError
+	}
+
+	_, err := p.db.Exec(`
+		UPDATE accounts
+		SET pool_status = ?,
+		    failure_count = ?,
+		    last_error = ?,
+		    completed_at = ?
+		WHERE id = ?
+	`, account.Status, account.FailureCount, lastError, completedAt, account.ID)
+
+	return err
 }
 
 // GetQueryDefinition returns the query definition for this pool

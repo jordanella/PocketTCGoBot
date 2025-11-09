@@ -116,6 +116,7 @@ func main() {
 	// Try to get accounts
 	fmt.Println("\nAttempting to retrieve accounts...")
 
+	retrievedAccounts := []*accountpool.Account{}
 	for i := 0; i < min(3, stats.Available); i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		account, err := pool.GetNext(ctx)
@@ -127,6 +128,17 @@ func main() {
 		}
 
 		fmt.Printf("  ✓ Account %d: %s (packs: %d, status: %s)\n", i+1, account.ID, account.PackCount, account.Status)
+		retrievedAccounts = append(retrievedAccounts, account)
+	}
+
+	// Return accounts to pool
+	fmt.Println("\nReturning accounts to pool...")
+	for i, account := range retrievedAccounts {
+		if err := pool.Return(account); err != nil {
+			fmt.Printf("  ✗ Failed to return account %d: %v\n", i+1, err)
+		} else {
+			fmt.Printf("  ✓ Returned account %s\n", account.ID)
+		}
 	}
 
 	// Final stats
