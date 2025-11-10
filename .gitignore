@@ -6,10 +6,13 @@
 *.dll
 *.so
 *.dylib
-pocket-bot
-pocket-bot-gui
-bot
-bot-gui
+
+# Compiled binaries (in bin/ directory only)
+/bin/pocket-bot
+/bin/pocket-bot-gui
+/bin/bot
+/bin/bot-gui
+/bin/*.exe
 
 # Test binaries
 *.test
