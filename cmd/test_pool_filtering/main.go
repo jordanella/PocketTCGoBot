@@ -48,7 +48,7 @@ func main() {
 	fmt.Println("✓ Test data created\n")
 
 	// Create PoolManager
-	poolManager := accountpool.NewPoolManager(poolsDir, db)
+	poolManager := accountpool.NewPoolManager(poolsDir, db, "account_xmls")
 	if err := poolManager.DiscoverPools(); err != nil {
 		log.Fatalf("Failed to discover pools: %v", err)
 	}

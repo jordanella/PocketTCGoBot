@@ -13,27 +13,20 @@ import (
 
 // PoolManager manages account pool definitions and instances
 type PoolManager struct {
-	poolsDir  string
-	db        *sql.DB
-	pools     map[string]*PoolDefinition
-	instances map[string]AccountPool
-	mu        sync.RWMutex
+	poolsDir      string
+	db            *sql.DB
+	xmlStorageDir string // Global XML storage directory (./account_xmls/)
+	pools         map[string]*PoolDefinition
+	instances     map[string]AccountPool
+	mu            sync.RWMutex
 }
 
 // PoolDefinition describes a pool configuration
+// All pools are now unified - the Type field has been removed
 type PoolDefinition struct {
-	Name     string      `yaml:"name"`
-	Type     string      `yaml:"type"` // "file" or "sql"
-	FilePath string      `yaml:"-"`    // Path to YAML file (not stored in YAML)
-	Config   interface{} `yaml:"-"`    // FilePoolConfig or QueryDefinition
-}
-
-// FilePoolConfig holds file-based pool configuration
-type FilePoolConfig struct {
-	Name       string     `yaml:"name"`
-	Type       string     `yaml:"type"` // "file"
-	Directory  string     `yaml:"directory"`
-	PoolConfig PoolConfig `yaml:"pool_config"`
+	Name     string                   `yaml:"name"`
+	FilePath string                   `yaml:"-"` // Path to YAML file (not stored in YAML)
+	Config   *UnifiedPoolDefinition   `yaml:"-"` // Pool configuration
 }
 
 // TestResult contains results from testing a pool
@@ -53,12 +46,16 @@ type AccountSummary struct {
 }
 
 // NewPoolManager creates a new pool manager
-func NewPoolManager(poolsDir string, db *sql.DB) *PoolManager {
+func NewPoolManager(poolsDir string, db *sql.DB, xmlStorageDir string) *PoolManager {
+	// Ensure XML storage directory exists
+	os.MkdirAll(xmlStorageDir, 0755)
+
 	return &PoolManager{
-		poolsDir:  poolsDir,
-		db:        db,
-		pools:     make(map[string]*PoolDefinition),
-		instances: make(map[string]AccountPool),
+		poolsDir:      poolsDir,
+		db:            db,
+		xmlStorageDir: xmlStorageDir,
+		pools:         make(map[string]*PoolDefinition),
+		instances:     make(map[string]AccountPool),
 	}
 }
 
@@ -116,38 +113,15 @@ func (pm *PoolManager) loadPoolDefinition(filePath string) (*PoolDefinition, err
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// First, peek at the type to determine which struct to use
-	var typeCheck struct {
-		Type string `yaml:"type"`
-		Name string `yaml:"name"`
-	}
-	if err := yaml.Unmarshal(data, &typeCheck); err != nil {
-		return nil, fmt.Errorf("failed to parse YAML: %w", err)
+	// All pools are unified pools now
+	var config UnifiedPoolDefinition
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse pool config: %w", err)
 	}
 
 	poolDef := &PoolDefinition{
-		Name: typeCheck.Name,
-		Type: typeCheck.Type,
-	}
-
-	// Load the appropriate config based on type
-	switch typeCheck.Type {
-	case "file":
-		var config FilePoolConfig
-		if err := yaml.Unmarshal(data, &config); err != nil {
-			return nil, fmt.Errorf("failed to parse file pool config: %w", err)
-		}
-		poolDef.Config = &config
-
-	case "sql":
-		var config QueryDefinition
-		if err := yaml.Unmarshal(data, &config); err != nil {
-			return nil, fmt.Errorf("failed to parse SQL pool config: %w", err)
-		}
-		poolDef.Config = &config
-
-	default:
-		return nil, fmt.Errorf("unknown pool type: %s", typeCheck.Type)
+		Name:   config.PoolName,
+		Config: &config,
 	}
 
 	return poolDef, nil
@@ -194,26 +168,12 @@ func (pm *PoolManager) GetPool(name string) (AccountPool, error) {
 		return nil, fmt.Errorf("pool '%s' not found", name)
 	}
 
-	// Create instance based on type
-	var pool AccountPool
-	var err error
-
-	switch poolDef.Type {
-	case "file":
-		config := poolDef.Config.(*FilePoolConfig)
-		pool, err = NewFileAccountPool(config.Directory, config.PoolConfig)
-
-	case "sql":
-		if pm.db == nil {
-			return nil, fmt.Errorf("database not configured for SQL pools")
-		}
-		// Use the file path directly since it contains the full config
-		pool, err = NewSQLAccountPool(pm.db, poolDef.FilePath, PoolConfig{})
-
-	default:
-		return nil, fmt.Errorf("unsupported pool type: %s", poolDef.Type)
+	// Create unified pool instance
+	if pm.db == nil {
+		return nil, fmt.Errorf("database not configured")
 	}
 
+	pool, err := NewUnifiedAccountPool(pm.db, poolDef.FilePath, pm.xmlStorageDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pool: %w", err)
 	}
@@ -327,27 +287,14 @@ func (pm *PoolManager) TestPool(name string) (*TestResult, error) {
 		SampleAccounts: make([]AccountSummary, 0),
 	}
 
-	// Create temporary instance
-	var pool AccountPool
-	switch poolDef.Type {
-	case "file":
-		config := poolDef.Config.(*FilePoolConfig)
-		pool, err = NewFileAccountPool(config.Directory, config.PoolConfig)
-
-	case "sql":
-		if pm.db == nil {
-			result.Success = false
-			result.Error = "database not configured"
-			return result, nil
-		}
-		pool, err = NewSQLAccountPool(pm.db, poolDef.FilePath, PoolConfig{})
-
-	default:
+	// Create temporary unified pool instance
+	if pm.db == nil {
 		result.Success = false
-		result.Error = fmt.Sprintf("unsupported pool type: %s", poolDef.Type)
+		result.Error = "database not configured"
 		return result, nil
 	}
 
+	pool, err := NewUnifiedAccountPool(pm.db, poolDef.FilePath, pm.xmlStorageDir)
 	if err != nil {
 		result.Success = false
 		result.Error = err.Error()
@@ -438,6 +385,309 @@ func (pm *PoolManager) CloseAll() error {
 	for name, instance := range pm.instances {
 		instance.Close()
 		delete(pm.instances, name)
+	}
+
+	return nil
+}
+
+// ImportFolder imports account XMLs from an arbitrary folder into the database and global storage
+func (pm *PoolManager) ImportFolder(folderPath string) (imported []string, err error) {
+	// Check if folder exists
+	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("folder does not exist: %s", folderPath)
+	}
+
+	// Read directory
+	files, err := os.ReadDir(folderPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	imported = make([]string, 0)
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+
+		// Only process XML files
+		if !strings.HasSuffix(strings.ToLower(file.Name()), ".xml") {
+			continue
+		}
+
+		xmlPath := filepath.Join(folderPath, file.Name())
+
+		// Parse account
+		account, err := parseAccountXMLFile(xmlPath)
+		if err != nil {
+			fmt.Printf("Warning: Failed to parse '%s': %v\n", xmlPath, err)
+			continue
+		}
+
+		// Import to database
+		if err := pm.importAccountToDB(account); err != nil {
+			fmt.Printf("Warning: Failed to import account '%s': %v\n", account.DeviceAccount, err)
+			continue
+		}
+
+		// Copy to global storage
+		if err := pm.copyToGlobalStorage(xmlPath, account.DeviceAccount); err != nil {
+			fmt.Printf("Warning: Failed to copy to global storage: %v\n", err)
+			// Continue anyway - account is in DB
+		}
+
+		imported = append(imported, account.DeviceAccount)
+	}
+
+	return imported, nil
+}
+
+// ExportPoolXMLs exports all XMLs from a pool to a destination folder
+func (pm *PoolManager) ExportPoolXMLs(poolName, destFolder string) error {
+	// Get pool instance
+	pool, err := pm.GetPool(poolName)
+	if err != nil {
+		return fmt.Errorf("failed to get pool: %w", err)
+	}
+
+	// Get all accounts from pool
+	accounts := pool.ListAccounts()
+	if len(accounts) == 0 {
+		return fmt.Errorf("pool has no accounts to export")
+	}
+
+	// Ensure destination folder exists
+	if err := os.MkdirAll(destFolder, 0755); err != nil {
+		return fmt.Errorf("failed to create destination folder: %w", err)
+	}
+
+	// Export each account
+	exported := 0
+	failed := 0
+
+	for _, account := range accounts {
+		// Get or generate XML
+		xmlContent, err := pm.GetAccountXML(account.DeviceAccount)
+		if err != nil {
+			fmt.Printf("Warning: Failed to get XML for account '%s': %v\n", account.DeviceAccount, err)
+			failed++
+			continue
+		}
+
+		// Write to destination
+		destPath := filepath.Join(destFolder, account.DeviceAccount+".xml")
+		if err := os.WriteFile(destPath, xmlContent, 0644); err != nil {
+			fmt.Printf("Warning: Failed to write XML for account '%s': %v\n", account.DeviceAccount, err)
+			failed++
+			continue
+		}
+
+		exported++
+	}
+
+	if exported == 0 {
+		return fmt.Errorf("failed to export any accounts (all %d failed)", failed)
+	}
+
+	fmt.Printf("Successfully exported %d accounts (%d failed) from pool '%s' to '%s'\n",
+		exported, failed, poolName, destFolder)
+
+	return nil
+}
+
+// ExportAccountXML exports a single account XML by device_account
+func (pm *PoolManager) ExportAccountXML(deviceAccount, destFolder string) error {
+	// Ensure destination folder exists
+	if err := os.MkdirAll(destFolder, 0755); err != nil {
+		return fmt.Errorf("failed to create destination folder: %w", err)
+	}
+
+	// Check if XML exists in global storage
+	sourcePath := filepath.Join(pm.xmlStorageDir, deviceAccount+".xml")
+	if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
+		// XML doesn't exist in global storage, need to generate from DB
+		account, err := pm.fetchAccountFromDB(deviceAccount)
+		if err != nil {
+			return fmt.Errorf("account not found in database: %w", err)
+		}
+
+		// Generate XML
+		xmlContent := fmt.Sprintf(`<account>%s</account>
+<password>%s</password>`, account.DeviceAccount, account.DevicePassword)
+
+		// Save to global storage first
+		if err := os.WriteFile(sourcePath, []byte(xmlContent), 0644); err != nil {
+			return fmt.Errorf("failed to save to global storage: %w", err)
+		}
+	}
+
+	// Copy to destination
+	destPath := filepath.Join(destFolder, deviceAccount+".xml")
+	data, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to read source XML: %w", err)
+	}
+
+	if err := os.WriteFile(destPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write destination XML: %w", err)
+	}
+
+	return nil
+}
+
+// GetAccountXML retrieves the XML content for an account (from global storage or generates it)
+func (pm *PoolManager) GetAccountXML(deviceAccount string) ([]byte, error) {
+	// Check global storage first
+	xmlPath := filepath.Join(pm.xmlStorageDir, deviceAccount+".xml")
+	if data, err := os.ReadFile(xmlPath); err == nil {
+		return data, nil
+	}
+
+	// Not in global storage, generate from database
+	account, err := pm.fetchAccountFromDB(deviceAccount)
+	if err != nil {
+		return nil, fmt.Errorf("account not found: %w", err)
+	}
+
+	// Generate XML content
+	xmlContent := fmt.Sprintf(`<account>%s</account>
+<password>%s</password>`, account.DeviceAccount, account.DevicePassword)
+
+	// Save to global storage for future use
+	if err := os.WriteFile(xmlPath, []byte(xmlContent), 0644); err != nil {
+		// Log warning but return content anyway
+		fmt.Printf("Warning: Failed to cache XML to global storage: %v\n", err)
+	}
+
+	return []byte(xmlContent), nil
+}
+
+// EnsureXMLExists ensures an account has an XML file in global storage
+func (pm *PoolManager) EnsureXMLExists(deviceAccount string) error {
+	xmlPath := filepath.Join(pm.xmlStorageDir, deviceAccount+".xml")
+
+	// Check if exists
+	if _, err := os.Stat(xmlPath); err == nil {
+		return nil // Already exists
+	}
+
+	// Generate from database
+	_, err := pm.GetAccountXML(deviceAccount)
+	return err
+}
+
+// Helper methods
+
+// parseAccountXMLFile parses an account XML file
+func parseAccountXMLFile(xmlPath string) (*Account, error) {
+	data, err := os.ReadFile(xmlPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read XML: %w", err)
+	}
+
+	content := string(data)
+
+	// Extract device_account
+	deviceAccount := extractXMLTag(content, "account")
+	if deviceAccount == "" {
+		return nil, fmt.Errorf("missing <account> tag")
+	}
+
+	// Extract device_password
+	devicePassword := extractXMLTag(content, "password")
+	if devicePassword == "" {
+		return nil, fmt.Errorf("missing <password> tag")
+	}
+
+	return &Account{
+		ID:             deviceAccount,
+		DeviceAccount:  deviceAccount,
+		DevicePassword: devicePassword,
+		XMLPath:        xmlPath,
+		Metadata:       make(map[string]string),
+		Status:         AccountStatusAvailable,
+	}, nil
+}
+
+// extractXMLTag extracts content from <tag>content</tag>
+func extractXMLTag(xml, tag string) string {
+	openTag := "<" + tag + ">"
+	closeTag := "</" + tag + ">"
+
+	startIdx := strings.Index(xml, openTag)
+	if startIdx == -1 {
+		return ""
+	}
+	startIdx += len(openTag)
+
+	endIdx := strings.Index(xml[startIdx:], closeTag)
+	if endIdx == -1 {
+		return ""
+	}
+
+	return xml[startIdx : startIdx+endIdx]
+}
+
+// importAccountToDB inserts or updates an account in the database
+func (pm *PoolManager) importAccountToDB(account *Account) error {
+	query := `
+		INSERT INTO accounts (device_account, device_password, created_at, last_used_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP, NULL)
+		ON CONFLICT(device_account) DO UPDATE SET
+			device_password = excluded.device_password
+	`
+
+	_, err := pm.db.Exec(query, account.DeviceAccount, account.DevicePassword)
+	return err
+}
+
+// fetchAccountFromDB retrieves a single account from the database
+func (pm *PoolManager) fetchAccountFromDB(deviceAccount string) (*Account, error) {
+	query := `
+		SELECT device_account, device_password, shinedust, packs_opened, last_used_at
+		FROM accounts
+		WHERE device_account = ?
+	`
+
+	account := &Account{
+		Metadata: make(map[string]string),
+	}
+
+	var lastUsedStr sql.NullString
+	var shinedust, packsOpened int
+
+	err := pm.db.QueryRow(query, deviceAccount).Scan(
+		&account.DeviceAccount,
+		&account.DevicePassword,
+		&shinedust,
+		&packsOpened,
+		&lastUsedStr,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("account not found in database: %w", err)
+	}
+
+	account.ID = account.DeviceAccount
+	account.PackCount = packsOpened
+	account.Status = AccountStatusAvailable
+
+	return account, nil
+}
+
+// copyToGlobalStorage copies an XML file to global storage
+func (pm *PoolManager) copyToGlobalStorage(sourcePath, deviceAccount string) error {
+	destPath := filepath.Join(pm.xmlStorageDir, deviceAccount+".xml")
+
+	// Read source
+	data, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to read source: %w", err)
+	}
+
+	// Write to destination
+	if err := os.WriteFile(destPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write destination: %w", err)
 	}
 
 	return nil

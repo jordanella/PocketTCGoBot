@@ -63,7 +63,7 @@ func main() {
 
 	// Test 1: Create PoolManager
 	fmt.Println("=== Test 1: Create PoolManager ===")
-	poolManager := accountpool.NewPoolManager(poolsDir, db)
+	poolManager := accountpool.NewPoolManager(poolsDir, db, "account_xmls")
 	fmt.Println("✓ PoolManager created\n")
 
 	// Test 2: Discover Pools
@@ -89,22 +89,13 @@ func main() {
 		}
 
 		fmt.Printf("\nPool: %s\n", poolDef.Name)
-		fmt.Printf("  Type: %s\n", poolDef.Type)
+		fmt.Printf("  Type: unified\n")
 		fmt.Printf("  File: %s\n", poolDef.FilePath)
-
-		switch poolDef.Type {
-		case "sql":
-			queryDef := poolDef.Config.(*accountpool.QueryDefinition)
-			fmt.Printf("  Description: %s\n", queryDef.Description)
-			fmt.Printf("  Parameters: %d\n", len(queryDef.Query.Parameters))
-			for _, param := range queryDef.Query.Parameters {
-				fmt.Printf("    - %s: %v (%s)\n", param.Name, param.Value, param.Type)
-			}
-
-		case "file":
-			fileConfig := poolDef.Config.(*accountpool.FilePoolConfig)
-			fmt.Printf("  Directory: %s\n", fileConfig.Directory)
-		}
+		fmt.Printf("  Description: %s\n", poolDef.Config.Description)
+		fmt.Printf("  Queries: %d\n", len(poolDef.Config.Queries))
+		fmt.Printf("  Includes: %d\n", len(poolDef.Config.Include))
+		fmt.Printf("  Excludes: %d\n", len(poolDef.Config.Exclude))
+		fmt.Printf("  Watched Paths: %d\n", len(poolDef.Config.WatchedPaths))
 	}
 	fmt.Println()
 

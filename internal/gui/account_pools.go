@@ -238,31 +238,17 @@ func (t *AccountPoolsTab) refreshPoolList() {
 
 		item := PoolListItem{
 			Name:     poolDef.Name,
-			Type:     poolDef.Type,
+			Type:     "unified", // All pools are unified
 			FilePath: poolDef.FilePath,
 		}
 
-		// Get description and account count based on type
-		switch poolDef.Type {
-		case "sql":
-			queryDef := poolDef.Config.(*accountpool.QueryDefinition)
-			item.Description = queryDef.Description
+		// Get description and account count
+		item.Description = poolDef.Config.Description
 
-			// Test pool to get account count
-			testResult, err := t.poolManager.TestPool(name)
-			if err == nil && testResult.Success {
-				item.AccountCount = testResult.AccountsFound
-			}
-
-		case "file":
-			fileConfig := poolDef.Config.(*accountpool.FilePoolConfig)
-			item.Description = fmt.Sprintf("Directory: %s", fileConfig.Directory)
-
-			// Test pool to get account count
-			testResult, err := t.poolManager.TestPool(name)
-			if err == nil && testResult.Success {
-				item.AccountCount = testResult.AccountsFound
-			}
+		// Test pool to get account count
+		testResult, err := t.poolManager.TestPool(name)
+		if err == nil && testResult.Success {
+			item.AccountCount = testResult.AccountsFound
 		}
 
 		newPoolsData = append(newPoolsData, item)
@@ -366,12 +352,8 @@ func (t *AccountPoolsTab) onEditPool() {
 		return
 	}
 
-	// Show edit dialog based on type
-	if poolDef.Type == "sql" {
-		t.showSQLPoolEditor(poolDef)
-	} else {
-		t.showFilePoolEditor(poolDef)
-	}
+	// All pools are unified now
+	t.showUnifiedPoolEditor(poolDef)
 }
 
 func (t *AccountPoolsTab) onDeletePool() {
@@ -408,21 +390,18 @@ func (t *AccountPoolsTab) buildCreatePoolDialog() dialog.Dialog {
 	poolNameEntry := widget.NewEntry()
 	poolNameEntry.SetPlaceHolder("Enter pool name")
 
-	poolTypeSelect := widget.NewSelect([]string{"SQL Pool", "File Pool"}, nil)
-	poolTypeSelect.SetSelected("SQL Pool")
-
-	form := &widget.Form{
-		Items: []*widget.FormItem{
-			{Text: "Pool Name", Widget: poolNameEntry},
-			{Text: "Pool Type", Widget: poolTypeSelect},
-		},
-	}
+	content := container.NewVBox(
+		widget.NewLabel("Create a new unified account pool"),
+		widget.NewLabel(""),
+		widget.NewLabel("Pool Name:"),
+		poolNameEntry,
+	)
 
 	dlg := dialog.NewCustomConfirm(
 		"Create New Pool",
 		"Next",
 		"Cancel",
-		form,
+		content,
 		func(confirmed bool) {
 			if !confirmed {
 				return
@@ -434,17 +413,13 @@ func (t *AccountPoolsTab) buildCreatePoolDialog() dialog.Dialog {
 				return
 			}
 
-			// Open appropriate wizard
-			if poolTypeSelect.Selected == "SQL Pool" {
-				t.showSQLPoolWizard(name)
-			} else {
-				t.showFilePoolWizard(name)
-			}
+			// Open unified pool wizard
+			t.showUnifiedPoolWizard(name)
 		},
 		t.controller.window,
 	)
 
-	dlg.Resize(fyne.NewSize(400, 200))
+	dlg.Resize(fyne.NewSize(400, 150))
 	return dlg
 }
 
@@ -474,149 +449,64 @@ func (t *AccountPoolsTab) showTestResults(poolName string, result *accountpool.T
 	}
 }
 
-// SQL Pool Wizard and Editor
-func (t *AccountPoolsTab) showSQLPoolWizard(name string) {
-	qb := NewQueryBuilder(t.controller.window, name, func(queryDef *accountpool.QueryDefinition) {
+// Pool Wizard and Editor (all pools are unified now)
+func (t *AccountPoolsTab) showUnifiedPoolWizard(name string) {
+	wizard := NewUnifiedPoolWizard(t.controller.window, name, func(poolDef *accountpool.UnifiedPoolDefinition) {
 		// Create pool definition
-		poolDef := &accountpool.PoolDefinition{
-			Name:   queryDef.Name,
-			Type:   "sql",
-			Config: queryDef,
+		def := &accountpool.PoolDefinition{
+			Name:   poolDef.PoolName,
+			Config: poolDef,
 		}
 
 		// Create pool
-		if err := t.poolManager.CreatePool(poolDef); err != nil {
+		if err := t.poolManager.CreatePool(def); err != nil {
 			t.showError("Failed to create pool", err)
 			return
 		}
 
-		t.showInfo(fmt.Sprintf("SQL pool '%s' created successfully", queryDef.Name))
+		t.showInfo(fmt.Sprintf("Pool '%s' created successfully", poolDef.PoolName))
 		t.refreshPoolList()
 	})
 
-	qb.Show()
+	wizard.Show()
 }
 
-func (t *AccountPoolsTab) showSQLPoolEditor(poolDef *accountpool.PoolDefinition) {
-	queryDef := poolDef.Config.(*accountpool.QueryDefinition)
-
-	qb := NewQueryBuilderFromDefinition(t.controller.window, queryDef, func(updatedQueryDef *accountpool.QueryDefinition) {
+func (t *AccountPoolsTab) showUnifiedPoolEditor(poolDef *accountpool.PoolDefinition) {
+	// Create wizard pre-populated with existing values
+	wizard := NewUnifiedPoolWizard(t.controller.window, poolDef.Config.PoolName, func(updatedDef *accountpool.UnifiedPoolDefinition) {
 		// Update pool definition
-		poolDef.Name = updatedQueryDef.Name
-		poolDef.Config = updatedQueryDef
+		poolDef.Name = updatedDef.PoolName
+		poolDef.Config = updatedDef
 
 		// Update pool
-		if err := t.poolManager.UpdatePool(queryDef.Name, poolDef); err != nil {
+		if err := t.poolManager.UpdatePool(poolDef.Config.PoolName, poolDef); err != nil {
 			t.showError("Failed to update pool", err)
 			return
 		}
 
-		t.showInfo(fmt.Sprintf("Pool '%s' updated successfully", updatedQueryDef.Name))
+		t.showInfo(fmt.Sprintf("Pool '%s' updated successfully", updatedDef.PoolName))
 		t.refreshPoolList()
 	})
 
-	qb.Show()
-}
+	// Pre-populate wizard with existing values
+	wizard.description = poolDef.Config.Description
 
-// File Pool Wizard and Editor
-func (t *AccountPoolsTab) showFilePoolWizard(name string) {
-	dirEntry := widget.NewEntry()
-	dirEntry.SetPlaceHolder("./accounts/manual")
-
-	form := &widget.Form{
-		Items: []*widget.FormItem{
-			{Text: "Directory", Widget: dirEntry},
-		},
+	// Convert queries
+	wizard.queries = make([]QueryConfig, len(poolDef.Config.Queries))
+	for i, q := range poolDef.Config.Queries {
+		wizard.queries[i] = QueryConfig{
+			Name: q.Name,
+			SQL:  q.SQL,
+		}
 	}
 
-	dialog.ShowCustomConfirm(
-		fmt.Sprintf("Create File Pool: %s", name),
-		"Create",
-		"Cancel",
-		form,
-		func(confirmed bool) {
-			if !confirmed {
-				return
-			}
+	wizard.includes = append([]string{}, poolDef.Config.Include...)
+	wizard.excludes = append([]string{}, poolDef.Config.Exclude...)
+	wizard.watchedPaths = append([]string{}, poolDef.Config.WatchedPaths...)
+	wizard.sortMethod = poolDef.Config.Config.SortMethod
+	wizard.retryFailed = poolDef.Config.Config.RetryFailed
+	wizard.maxFailures = poolDef.Config.Config.MaxFailures
+	wizard.refreshInterval = poolDef.Config.Config.RefreshInterval
 
-			directory := dirEntry.Text
-			if directory == "" {
-				dialog.ShowError(fmt.Errorf("directory is required"), t.controller.window)
-				return
-			}
-
-			// Create file pool definition
-			fileConfig := &accountpool.FilePoolConfig{
-				Name:      name,
-				Type:      "file",
-				Directory: directory,
-				PoolConfig: accountpool.PoolConfig{
-					RetryFailed:   false,
-					MaxFailures:   1,
-					BufferSize:    10,
-					RefreshInterval: 0,
-				},
-			}
-
-			poolDef := &accountpool.PoolDefinition{
-				Name:   name,
-				Type:   "file",
-				Config: fileConfig,
-			}
-
-			// Create pool
-			if err := t.poolManager.CreatePool(poolDef); err != nil {
-				t.showError("Failed to create pool", err)
-				return
-			}
-
-			t.showInfo(fmt.Sprintf("File pool '%s' created successfully", name))
-			t.refreshPoolList()
-		},
-		t.controller.window,
-	)
-}
-
-func (t *AccountPoolsTab) showFilePoolEditor(poolDef *accountpool.PoolDefinition) {
-	fileConfig := poolDef.Config.(*accountpool.FilePoolConfig)
-
-	dirEntry := widget.NewEntry()
-	dirEntry.SetText(fileConfig.Directory)
-
-	form := &widget.Form{
-		Items: []*widget.FormItem{
-			{Text: "Directory", Widget: dirEntry},
-		},
-	}
-
-	dialog.ShowCustomConfirm(
-		fmt.Sprintf("Edit File Pool: %s", poolDef.Name),
-		"Save",
-		"Cancel",
-		form,
-		func(confirmed bool) {
-			if !confirmed {
-				return
-			}
-
-			directory := dirEntry.Text
-			if directory == "" {
-				dialog.ShowError(fmt.Errorf("directory is required"), t.controller.window)
-				return
-			}
-
-			// Update config
-			fileConfig.Directory = directory
-
-			// Update pool
-			if err := t.poolManager.UpdatePool(poolDef.Name, poolDef); err != nil {
-				t.showError("Failed to update pool", err)
-				return
-			}
-
-			t.showInfo(fmt.Sprintf("Pool '%s' updated successfully", poolDef.Name))
-			t.refreshPoolList()
-		},
-		t.controller.window,
-	)
+	wizard.Show()
 }

@@ -43,6 +43,9 @@ type AccountPool interface {
 	// Refresh reloads accounts from the source
 	Refresh() error
 
+	// ListAccounts returns all accounts in the pool (for export/inspection)
+	ListAccounts() []*Account
+
 	// Close closes the pool and releases resources
 	Close() error
 }

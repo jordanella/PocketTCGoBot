@@ -1,0 +1,21 @@
+# Simple Test Pool - Rename to .yaml (remove .example) to activate
+# This is a minimal unified pool for testing the system
+
+pool_name: "test_unified_pool"
+description: "Simple test pool with all active accounts"
+
+# Single query to get all active accounts
+queries:
+  - name: "all_active"
+    sql: |
+      SELECT device_account, device_password, shinedust, packs_opened, last_used_at
+      FROM accounts
+      WHERE is_active = 1
+      ORDER BY packs_opened DESC
+      LIMIT 10
+
+config:
+  sort_method: "packs_desc"
+  retry_failed: true
+  max_failures: 3
+  refresh_interval: 0  # Manual refresh only

@@ -349,35 +349,7 @@ func (t *ManagerGroupsTab) createGroup(
 
 	if poolSelection != "(None - No Account Pool)" && poolSelection != "" {
 		if poolSelection == "(Legacy - File Browser)" {
-			// Legacy file-based pool
-			if accountsPath == "" {
-				return fmt.Errorf("accounts directory is required for legacy file pool")
-			}
-
-			minPacks, _ := strconv.Atoi(minPacksStr)
-			maxPacks, _ := strconv.Atoi(maxPacksStr)
-			maxFailures, _ := strconv.Atoi(maxFailuresStr)
-			if maxFailures == 0 {
-				maxFailures = 3
-			}
-
-			sortMethod := t.parseSortMethod(sortMethodStr)
-
-			poolConfig = accountpool.PoolConfig{
-				MinPacks:        minPacks,
-				MaxPacks:        maxPacks,
-				SortMethod:      sortMethod,
-				RetryFailed:     retryFailed,
-				MaxFailures:     maxFailures,
-				WaitForAccounts: true,
-				MaxWaitTime:     5 * time.Minute,
-				BufferSize:      100,
-			}
-
-			pool, err = accountpool.NewFileAccountPool(accountsPath, poolConfig)
-			if err != nil {
-				return fmt.Errorf("failed to create file account pool: %w", err)
-			}
+			return fmt.Errorf("legacy file browser pools are no longer supported - please use the Account Pools tab to create a unified pool")
 		} else {
 			// Pool from PoolManager (get from Controller)
 			poolManager := t.controller.poolManager
@@ -827,35 +799,7 @@ func (t *ManagerGroupsTab) updateGroup(
 
 	if poolSelection != "(None - No Account Pool)" && poolSelection != "" {
 		if poolSelection == "(Legacy - File Browser)" {
-			// Legacy file-based pool
-			if accountsPath == "" {
-				return fmt.Errorf("accounts directory is required for legacy file pool")
-			}
-
-			minPacks, _ := strconv.Atoi(minPacksStr)
-			maxPacks, _ := strconv.Atoi(maxPacksStr)
-			maxFailures, _ := strconv.Atoi(maxFailuresStr)
-			if maxFailures == 0 {
-				maxFailures = 3
-			}
-
-			sortMethod := t.parseSortMethod(sortMethodStr)
-
-			poolConfig = accountpool.PoolConfig{
-				MinPacks:        minPacks,
-				MaxPacks:        maxPacks,
-				SortMethod:      sortMethod,
-				RetryFailed:     retryFailed,
-				MaxFailures:     maxFailures,
-				WaitForAccounts: true,
-				MaxWaitTime:     5 * time.Minute,
-				BufferSize:      100,
-			}
-
-			pool, err = accountpool.NewFileAccountPool(accountsPath, poolConfig)
-			if err != nil {
-				return fmt.Errorf("failed to create file account pool: %w", err)
-			}
+			return fmt.Errorf("legacy file browser pools are no longer supported - please use the Account Pools tab to create a unified pool")
 		} else {
 			// Pool from PoolManager (get from Controller)
 			poolManager := t.controller.poolManager

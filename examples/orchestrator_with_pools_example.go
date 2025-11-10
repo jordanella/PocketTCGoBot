@@ -61,7 +61,7 @@ func main() {
 
 	// ===== Step 2: Initialize PoolManager =====
 
-	poolManager := accountpool.NewPoolManager("./pools", db)
+	poolManager := accountpool.NewPoolManager("./pools", db, "account_xmls")
 
 	// Discover pools from YAML files in ./pools directory
 	if err := poolManager.DiscoverPools(); err != nil {

@@ -202,7 +202,8 @@ func (c *Controller) initializeDatabase() {
 	if c.db != nil {
 		// Create pool manager
 		poolsDir := "pools"
-		c.poolManager = accountpool.NewPoolManager(poolsDir, c.db.Conn())
+		xmlStorageDir := "account_xmls" // Global XML storage directory
+		c.poolManager = accountpool.NewPoolManager(poolsDir, c.db.Conn(), xmlStorageDir)
 		c.accountPoolsTab = NewAccountPoolsTab(c, c.poolManager, c.db.Conn())
 	} else {
 		// Database not available - pools tab will not be functional

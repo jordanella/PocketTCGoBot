@@ -1,0 +1,59 @@
+# Example Unified Account Pool Configuration
+# This is the new unified pool type that replaces both file and SQL pools
+# Rename this file to .yaml (remove .example) to activate it
+
+pool_name: "example_unified_pool"
+description: "Example unified pool with queries, inclusions, exclusions, and watched paths"
+
+# Query sources (optional) - Execute SQL queries to populate accounts
+# Results from all queries are combined
+queries:
+  - name: "high_pack_accounts"
+    sql: |
+      SELECT device_account, device_password, shinedust, packs_opened, last_used_at
+      FROM accounts
+      WHERE packs_opened >= 10
+      AND is_active = 1
+      AND is_banned = 0
+      ORDER BY packs_opened DESC
+    parameters: {}
+
+  - name: "recently_active"
+    sql: |
+      SELECT device_account, device_password, shinedust, packs_opened, last_used_at
+      FROM accounts
+      WHERE last_used_at >= datetime('now', '-7 days')
+      AND is_active = 1
+      ORDER BY last_used_at DESC
+    parameters: {}
+
+# Manual inclusions (optional) - Explicitly add specific accounts
+# These accounts will be fetched from the database
+include:
+  - "device123@example.com"
+  - "premium_account@example.com"
+  - "test_account@example.com"
+
+# Manual exclusions (optional) - Remove specific accounts from the pool
+# Exclusions are applied LAST (after queries and inclusions)
+exclude:
+  - "banned_account@example.com"
+  - "maintenance_account@example.com"
+
+# Watched paths (optional) - Folders to monitor for XML imports
+# XMLs found in these paths will be:
+#   1. Imported to the database (if not exists)
+#   2. Copied to global storage (./account_xmls/)
+#   3. Added to the pool's account list
+# These paths are READ-ONLY (never written to)
+watched_paths:
+  - "C:/accounts/premium"
+  - "D:/backup/premium_accounts"
+  - "./imported_accounts"
+
+# Pool configuration
+config:
+  sort_method: "packs_desc"  # Options: "packs_asc", "packs_desc", "modified_asc", "modified_desc"
+  retry_failed: true          # Whether to retry failed accounts
+  max_failures: 3             # Max times to retry a failed account
+  refresh_interval: 300       # Auto-refresh interval in seconds (0 = disabled)

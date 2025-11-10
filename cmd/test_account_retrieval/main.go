@@ -74,7 +74,7 @@ func main() {
 	fmt.Println("✓ Created 3 test accounts in database\n")
 
 	// Create pool manager
-	poolManager := accountpool.NewPoolManager(poolsDir, db)
+	poolManager := accountpool.NewPoolManager(poolsDir, db, "account_xmls")
 	poolManager.DiscoverPools()
 
 	// Get Premium Farmers Pool
