@@ -122,14 +122,13 @@ func (se *SentryEngine) executeSentry(sentry *Sentry) {
 		return
 	}
 
-	// Pause main routine execution before running sentry
-	controller := se.getRoutineController()
-	if controller != nil && controller.IsRunning() {
-		controller.Pause()
-		defer se.handleSentryResult(sentry, controller, nil) // Will be called even if panic
-	}
+	// Mark builder as sentry execution so it ignores halt signals
+	builder.AsSentryExecution()
 
-	// Execute the sentry routine
+	// Get controller for result handling (but don't pause yet)
+	controller := se.getRoutineController()
+
+	// Execute the sentry routine (runs in parallel with main routine)
 	err := builder.Execute(se.bot)
 
 	// Record execution metrics

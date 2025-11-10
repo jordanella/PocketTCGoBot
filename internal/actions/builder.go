@@ -24,6 +24,7 @@ type ActionBuilder struct {
 	errorCheckInterval time.Duration             // How often to check for errors
 	errorHandler       monitor.ErrorHandlerFunc  // Custom error handler for this action
 	templateRegistry   TemplateRegistryInterface // Optional: for validating template names at build time
+	isSentryExecution  bool                      // If true, ignores pause/stop signals from routine controller
 }
 
 // NewActionBuilder creates a new ActionBuilder for building reusable routines
@@ -36,6 +37,14 @@ func NewActionBuilder() *ActionBuilder {
 // This allows actions to validate that template names exist during the build phase
 func (ab *ActionBuilder) WithTemplateRegistry(registry TemplateRegistryInterface) *ActionBuilder {
 	ab.templateRegistry = registry
+	return ab
+}
+
+// AsSentryExecution marks this ActionBuilder as a sentry execution
+// Sentry executions ignore pause/stop signals from the routine controller
+// This prevents sentries from being blocked by their own halt commands
+func (ab *ActionBuilder) AsSentryExecution() *ActionBuilder {
+	ab.isSentryExecution = true
 	return ab
 }
 
@@ -301,6 +310,11 @@ func (ab *ActionBuilder) executeStepWithRetries(ctx context.Context, bot BotInte
 // checkExecutionState checks if routine should pause or stop
 // Returns true if execution should continue, false if stopped
 func (ab *ActionBuilder) checkExecutionState(bot BotInterface) bool {
+	// Sentry executions ignore halt signals to prevent deadlock
+	if ab.isSentryExecution {
+		return true
+	}
+
 	// Check if bot has routine controller
 	type routineControllerProvider interface {
 		RoutineController() RoutineControllerInterface

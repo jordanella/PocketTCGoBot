@@ -1,0 +1,48 @@
+routine_name: "Sentry System Example"
+description: "Demonstrates parallel and halting sentry behavior"
+tags: ["example", "sentry"]
+
+# Sentries run in parallel with the main routine
+sentries:
+  # Quick check sentry - runs in parallel without halting
+  - routine: optional_popup_dismiss
+    frequency: 3
+    severity: low
+    on_success: resume  # No-op if never halted
+    on_failure: resume  # Continue even if check fails
+
+  # Error remediation sentry - halts only when error detected
+  - routine: error_dialog_handler
+    frequency: 5
+    severity: high
+    on_success: resume      # Resume after successful remediation
+    on_failure: force_stop  # Stop if remediation fails
+
+steps:
+  # Main routine - these steps continue running unless sentry halts
+  - action: SetVariable
+    name: iteration
+    value: "0"
+
+  - action: Repeat
+    iterations: 20
+    actions:
+      - action: Increment
+        name: iteration
+
+      - action: Click
+        x: 540
+        y: 800
+
+      - action: Delay
+        count: 2
+
+      # Main routine continues here without interruption
+      # unless a sentry calls SentryHalt
+
+      - action: Click
+        x: 540
+        y: 1000
+
+      - action: Delay
+        count: 2

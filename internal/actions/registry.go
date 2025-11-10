@@ -46,4 +46,12 @@ var actionRegistry = map[string]reflect.Type{
 	"completeaccount":    reflect.TypeOf(CompleteAccount{}),
 	"returnaccount":      reflect.TypeOf(ReturnAccount{}),
 	"markaccountfailed":  reflect.TypeOf(MarkAccountFailed{}),
+	// Database actions
+	"updateaccountfield":    reflect.TypeOf(UpdateAccountField{}),
+	"incrementaccountfield": reflect.TypeOf(IncrementAccountField{}),
+	"updateroutinemetrics":  reflect.TypeOf(UpdateRoutineMetrics{}),
+	"getaccountfield":       reflect.TypeOf(GetAccountField{}),
+	// Sentry control actions
+	"sentryhalt":   reflect.TypeOf(SentryHalt{}),
+	"sentryresume": reflect.TypeOf(SentryResume{}),
 }

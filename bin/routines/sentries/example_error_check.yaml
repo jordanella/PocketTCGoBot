@@ -1,0 +1,35 @@
+routine_name: "Error Dialog Check"
+description: "Example sentry that checks for error dialogs and handles them"
+tags: ["sentry", "example"]
+
+steps:
+  # Check if error dialog is present
+  - action: IfImageFound
+    template: error_dialog
+    then:
+      # Error found - halt main routine for remediation
+      - action: SentryHalt
+
+      # Click OK button to dismiss error
+      - action: Click
+        x: 540
+        y: 1200
+
+      - action: Delay
+        count: 2
+
+      # Check if we're back to normal state
+      - action: IfImageFound
+        template: main_menu
+        then:
+          # Successfully recovered - resume main routine
+          - action: SentryResume
+        else:
+          # Still in error state - fail the sentry
+          # This will trigger OnFailure action (typically force_stop)
+          - action: Click
+            x: -1
+            y: -1  # Force an error
+    else:
+      # No error found - this is success
+      # Sentry completes without halting, main routine continues in parallel
