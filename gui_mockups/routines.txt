@@ -1,0 +1,61 @@
+|--------------------------------------------------------------------------------------------------------------|
+| Routines             										       /[+ New ]/ [ Refresh ] [ Restore Defaults ] |
+|--------------------------------------------------------------------------------------------------------------|
+|     Filter          |   Routine Name <version> <author>                                          <running> | |																				   |
+|---------------------|	  Description...																	 | |
+| {*} sentry        | |   Steps <>   Subroutines <>                                                          |-|
+| {*} example       |-|   Tags <example> <event>                                                 [ Details ] |#|
+| {*} event         |#|--------------------------------------------------------------------------------------|#|
+|                   |#|                                                                                      |#|
+|                   |#|                                                                                      |#|
+|                   |#|                                                                                      |#|
+|--------------------------------------------------------------------------------------------------------------|
+
+
+|--------------------------------------------------------------------------------------------------------------|
+|   Routine Name                                                                             [ Rename ] @modal |
+|--------------------------------------------------------------------------------------------------------------|
+|   Details  |  Configuration  |  Actions                                                                      |
+|--------------------------------------------------------------------------------------------------------------|
+|
+|   @Details
+|
+|   Filename {}
+|   Description [ Edit ] @modal
+|   Description of the routine, what it does, and any other useful information.
+|
+|   Author {author}
+|   Version {version}
+|
+|
+|   @Configuration
+|
+|   Variables
+|   {variable_name} {config_type ▼} {default_value} [ ▲ ] [ ▼ ]
+|   {variable_name} {config_type ▼} {default_value} [ ▲ ] [ ▼ ]
+|   {variable_name} {config_type ▼} {default_value} [ ▲ ] [ ▼ ]
+|   {variable_name} {config_type ▼} {default_value} [ ▲ ] [ ▼ ]
+|   {variable_name} {config_type ▼} {default_value} [ ▲ ] [ ▼ ]
+|
+|
+|   @Actions
+|
+|    --------------------------------------------------------
+|   |   ActionType - Name {label}     [ ▲ ] [ ▼ ] [ Remove ] |
+|   |   parameter {value}*{{required}}                       |
+|   |   parameter {value}                                    |
+|   |   /[ + Parameter ]/                                    |
+|   |   /[ + Action ]/                                       |
+|    -----------------------------------------------------------
+|      |   ActionType - Name {label}     [ ▲ ] [ ▼ ] [ Remove ] |
+|      |   parameter {value}*{{required}}                       |
+|      |   parameter {value}                                    | 
+|      |   /[ + Parameter ]/                                    |
+|      |   /[ + Action ]/                                       |
+|       --------------------------------------------------------
+|
+|   [ + Add Action ]
+|
+|--------------------------------------------------------------------------------------------------------------|
+|   [Validate] [Save /Changes/] /[Save as Copy] @modal/ /[Discard Changes]/ /[Delete]/ [Cancel]                |
+|--------------------------------------------------------------------------------------------------------------|

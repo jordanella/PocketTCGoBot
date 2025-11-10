@@ -1,0 +1,50 @@
+|--------------------------------------------------------------------------------------------------------------|
+|   Emulator Instances                                                                                         |
+|--------------------------------------------------------------------------------------------------------------|
+|    ------------------------------------------------------------------------------------------------------  | |
+|   |   Orchestration Group Name <orchestrationID>                                          [ + Instance ] | | |
+|   |   Description...                                                                                     | |-|
+|   |   Started <started at>   Account Pool <account_pool_name> (<remaining>/<total>)                      | |#|                                     
+|    ------------------------------------------------------------------------------------------------------  
+|        |   Instance Name - Index <mumu index>                    [ Pause ] [ Stop ] [ Abort ] [Shutdown] |
+|        |   Account <device_account> since <injection_time>
+|        |   Status <routine_status>
+|        |-------------------------------------------------------------------------------------------------
+|        |   Instance Name - Index <mumu index>                    [ Pause ] [ Stop ] [ Abort ] [Shutdown] |
+|        |   Account <device_account> since <injection_time>
+|        |   Status <routine_status>
+|         -------------------------------------------------------------------------------------------------
+|    ------------------------------------------------------------------------------------------------------
+|   |   Orchestration Group Name <orchestrationID>                                          [ + Instance ] |
+|   |   Description...                                                                                     |
+|   |   Started <started at>   Account Pool <account_pool_name> (<remaining>/<total>)                      |                                        
+|    ------------------------------------------------------------------------------------------------------
+|        |   Instance Name - Index <mumu index>                    [ Pause ] [ Stop ] [ Abort ] [Shutdown] |
+|        |   Account <device_account> since <injection_time>
+|        |   Status <routine_status>
+|        |-------------------------------------------------------------------------------------------------
+|        |   Instance Name - Index <mumu index>                    [ Pause ] [ Stop ] [ Abort ] [Shutdown] |
+|        |   Account <device_account> since <injection_time>
+|        |   Status <routine_status>
+|         -------------------------------------------------------------------------------------------------
+|    ------------------------------------------------------------------------------------------------------
+|   |   Idle                                                                                               |                                        
+|    ------------------------------------------------------------------------------------------------------
+|        |   Instance Name - Index <mumu index>                               [ Quick Start ] [ Shutdown ] |
+|        |   Account <device_account> since <injection_time>
+|        |   Associated <group A> <group B> <group C> and # more...
+|        |-------------------------------------------------------------------------------------------------
+|        |   Instance Name - Index <mumu index>                               [ Quick Start ] [ Shutdown ] |
+|        |   Account <device_account> since <injection_time>
+|        |   Associated <group A> <group B> <group C> and # more...
+|         -------------------------------------------------------------------------------------------------
+|    ------------------------------------------------------------------------------------------------------
+|   |   Inactive                                                                                           |                                        
+|    ------------------------------------------------------------------------------------------------------
+|        |   Instance Name - Index <mumu index>                                 [ Quick Start ] [ Launch ] |
+|        |   Associated <group A> <group B> <group C> and # more...
+|        |-------------------------------------------------------------------------------------------------
+|        |   Instance Name - Index <mumu index>                                 [ Quick Start ] [ Launch ] |
+|        |   Associated <group A> <group B> <group C> and # more...
+|         -------------------------------------------------------------------------------------------------
+|--------------------------------------------------------------------------------------------------------------|

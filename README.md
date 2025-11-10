@@ -1,21 +1,25 @@
 # PocketTCG Bot - Go Edition
 
-A high-performance Pokemon TCG Pocket automation bot written in Go, designed to build upon the PTCGPB project written in AutoHotkey with improved reliability, efficiency, and maintainability.
+A high-performance Pokemon TCG Pocket automation bot written in Go, designed to build upon the PTCGPB project with improved reliability, efficiency, and maintainability through a complete architectural rewrite.
+
 This is built using https://github.com/kevnITG/PTCGPB as a model. kevinnnn is a brilliant developer and none of this would be possible without the project he maintains.
 
 ## Overview
 
-PocketTCG Bot automates Wonder Pick farming and account management for Pokemon TCG Pocket running on MuMu Player emulator instances. Built with Go to eliminate dependency management issues while maintaining cross-platform compatibility and native performance.
+PocketTCG Bot automates Pokemon TCG Pocket gameplay across multiple MuMu Player emulator instances with sophisticated account management, YAML-based routine scripting, and parallel error monitoring via sentries. Built with Go for zero-dependency deployment and native performance.
 
-**Status:** Early prototype with core functionality implemented
+**Status:** v0.1.0 - Core infrastructure complete, production architecture implemented
 
 ### Key Features
 
-- **Multi-Instance Support** - Manage multiple MuMu Player emulator instances simultaneously
-- **Account Management** - Inject, extract, and manage game accounts via XML files
-- **Computer Vision** - Template-based image recognition with 236+ pre-defined templates
-- **Wonder Pick Automation** - Automated Wonder Pick farming with configurable preferences
-- **GUI Interface** - Cross-platform GUI built with Fyne framework
+- **Bot Group Orchestration** - Coordinate multiple bot instances with unique execution contexts (orchestration IDs)
+- **YAML-Based Routines** - Script automation workflows with 41 actions, conditionals, loops, and variables
+- **Sentry Supervision** - Parallel error monitoring routines for autonomous recovery
+- **Account Pool System** - SQL-based account querying with database checkout mutex for conflict-free multi-orchestration
+- **Template Registry** - 236+ pre-defined CV templates with YAML definitions and image caching
+- **Computer Vision** - Pure Go template matching for screen detection and navigation
+- **Multi-Instance Coordination** - Shared registries with per-instance state isolation
+- **GUI Interface** - Cross-platform Fyne-based management console
 - **ADB Integration** - Direct Android Debug Bridge control for emulator management
 
 ### Why Go?
@@ -28,37 +32,49 @@ PocketTCG Bot automates Wonder Pick farming and account management for Pokemon T
 
 ## Current Capabilities
 
-### Implemented
-- ✅ MuMu Player instance detection and management
-- ✅ Window positioning and resizing with multi-monitor support
-- ✅ Launch and kill Pokemon TCG Pocket APK
-- ✅ Account injection/extraction via ADB
-- ✅ XML-based account storage and loading
-- ✅ Template-based image recognition
-- ✅ Wonder Pick farming routine
-- ✅ Configuration management via INI file
-- ✅ Multi-tab GUI with real-time status
-- ✅ Screen history tracking
-- ✅ Action builder pattern for fluent scripting
+### Core Infrastructure ✅ Complete
+- **41 Actions** - Click, swipe, CV, loops, variables, conditionals, account management
+- **Routine System** - YAML-based scripting with eager loading registry
+- **Sentry Engine** - Parallel error monitoring with recovery actions
+- **Template Registry** - Image caching with YAML definitions and 236+ templates
+- **Variable System** - Per-instance stores with `${variable}` interpolation
+- **Config System** - User-configurable parameters with runtime overrides
+- **Bot Group Orchestrator** - Multi-instance coordination with shared registries
+- **Routine State Machine** - Idle/Running/Paused/Stopped/Completed lifecycle
+- **Account Pool Manager** - SQL queries, manual include/exclude, watched paths
+- **Database Checkout System** - Global mutex preventing duplicate account injections
+- **Orchestration ID System** - UUID-based execution context isolation
+- **MVC Architecture** - Proper separation for templates, routines, and account pools
 
-### In Development
-- 🚧 Bot execution flow routines
-- 🚧 Delegation to multiple instances
-- 🚧 Asynchronous error handling
-- 🚧 Card recognition and rarity detection
-- 🚧 Pack opening automation
-- 🚧 Mission completion
-- 🚧 OCR for text recognition (shinedust, card names)
-- 🚧 Database integration for detailed logging
-- 🚧 Error monitoring and recovery
-- 🚧 Discord webhook notifications
+### Database Integration ✅ Complete
+- **SQLite Backend** - Account storage, routine executions, checkout tracking
+- **Migration System** - 11 migrations with proper versioning
+- **Account Lifecycle** - Track routine executions per account with orchestration context
+- **Checkout Mutex** - Database columns for orchestration/instance tracking
+- **Stale Detection** - 10-minute timeout for crash recovery
 
-### Planned
-- 📋 Complete parity with AHK bot features
-- 📋 Enhanced card detection and logging
-- 📋 Discord integration for Wonder Pick groups
-- 📋 Save-for-Trade (S4T) functionality
-- 📋 Advanced statistics and reporting
+### GUI Features ✅ Complete
+- **Multi-tab Interface** - Dashboard, bot launcher, ADB test, config
+- **Account Pool Wizard** - Visual query builder for pool definitions
+- **Template Manager** - Load and cache templates from YAML
+- **Routine Browser** - View, validate, and reload routines
+- **Emulator Manager** - MuMu instance detection and management
+
+### In Development 🚧
+- Individual bot lifecycle controls (pause/resume/stop per instance)
+- Real-time status polling and updates
+- Health monitoring implementation
+- Auto-restart on failure
+- Sentry activity metrics
+- Domain-specific routine library (Pokemon TCG Pocket)
+
+### Planned 📋
+- Hot reload GUI buttons for templates/routines
+- Variable inspector per bot instance
+- Config editor GUI for routine parameters
+- Enhanced logging and statistics
+- Discord webhook notifications
+- OCR integration for text recognition
 
 ## Quick Start
 
@@ -102,31 +118,42 @@ go build -o pocket-bot-gui.exe ./cmd/bot-gui
 ```
 PocketTCGoBot/
 ├── cmd/
-│   ├── bot/           # CLI version (deprecated)
-│   └── bot-gui/       # GUI application (primary)
+│   ├── bot-gui/              # GUI application (primary)
+│   ├── bot/                  # CLI version (deprecated)
+│   ├── import_accounts/      # Account XML import tool
+│   ├── seed-database/        # Database seeding tool
+│   └── test_*/               # Testing utilities
 ├── internal/
-│   ├── bot/           # Core bot engine
-│   ├── actions/       # Action library and primitives
-│   ├── adb/           # Android Debug Bridge controller
-│   ├── cv/            # Computer vision and image capture
-│   ├── accounts/      # Account management
-│   ├── emulator/      # MuMu emulator integration
-│   ├── gui/           # Fyne GUI implementation
-│   ├── config/        # Configuration loader
-│   ├── monitor/       # Error monitoring
-│   ├── coordinator/   # Multi-bot coordination
-│   ├── ocr/           # OCR (placeholder)
-│   └── discord/       # Discord integration (placeholder)
+│   ├── bot/                  # Orchestrator, manager, bot lifecycle
+│   ├── actions/              # 41 actions, routine engine, sentry system
+│   ├── accountpool/          # Pool manager, unified pools, SQL filtering
+│   ├── database/             # SQLite migrations, models, checkout API
+│   ├── adb/                  # Android Debug Bridge controller
+│   ├── cv/                   # Computer vision and image capture
+│   ├── accounts/             # Account injection/extraction
+│   ├── emulator/             # MuMu instance detection and management
+│   ├── gui/                  # Fyne GUI tabs and wizards
+│   ├── config/               # Configuration loader
+│   ├── monitor/              # Error monitoring
+│   ├── coordinator/          # Multi-bot coordination (legacy)
+│   ├── ocr/                  # OCR (placeholder)
+│   └── discord/              # Discord integration (placeholder)
 ├── pkg/
-│   └── templates/     # Template definitions
+│   └── templates/            # Template registry and definitions
 ├── bin/
-│   ├── accounts/      # Account XML files
-│   ├── templates/     # Template PNG images
-│   └── Settings.ini   # Configuration file
-└── docs/              # Documentation
+│   ├── accounts/             # Account XML files
+│   ├── templates/            # Template PNG images (236+)
+│   ├── routines/             # YAML routine definitions
+│   ├── pools/                # Account pool YAML definitions
+│   └── Settings.ini          # Configuration file
+├── docs/
+│   ├── ARCHITECTURE.md       # Complete system architecture
+│   ├── ORCHESTRATION_ID_IMPLEMENTATION.md
+│   └── [14+ other docs]      # Actions, sentries, routines, etc.
+└── gui_mockups/              # Future interface designs
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for comprehensive architecture documentation.
 
 ## Configuration
 
@@ -164,38 +191,95 @@ See [docs/SETUP.md](docs/SETUP.md) for complete configuration guide.
 # Build GUI version
 go build -o pocket-bot-gui.exe ./cmd/bot-gui
 
-# Build CLI version (deprecated)
-go build -o pocket-bot.exe ./cmd/bot
+# Build all internal packages
+go build ./internal/...
 
 # Run tests
 go test ./...
+
+# Database migrations (automatic on first run)
+# See internal/database/migrations.go
+```
+
+### Creating YAML Routines
+
+Routines are YAML files in `bin/routines/`:
+
+```yaml
+routine_name: "My Routine"
+description: "Does something useful"
+tags: ["automation", "farming"]
+
+config:
+  - name: max_iterations
+    type: int
+    default: 10
+
+steps:
+  - action: SetVariable
+    name: counter
+    value: "0"
+
+  - action: FindAndClickCenter
+    template: MyButton
+    timeout: 5000
+
+  - action: ConditionalLoop
+    condition:
+      variable: counter
+      operator: "<"
+      value: "${max_iterations}"
+    steps:
+      - action: IncrementVariable
+        name: counter
 ```
 
 ### Adding New Actions
 
-Actions use a fluent builder pattern:
-
-```go
-// In internal/actions/library.go
-func (l *Library) DoSomething() error {
-    return l.Action().
-        Click(100, 200).
-        Sleep(1 * time.Second).
-        FindAndClickCenter(templates.Button).
-        Execute()
-}
-```
+1. Define action struct in [internal/actions/](internal/actions/)
+2. Implement `Execute(ctx context.Context, bot BotInterface) error`
+3. Register in `actionRegistry` map
+4. Document in [docs/ACTIONS.md](docs/ACTIONS.md)
 
 ### Adding New Templates
 
 1. Add PNG to `bin/templates/`
-2. Define in `pkg/templates/templates.go`:
-```go
-var MyNewTemplate = Template{
-    Name: "MyNewTemplate",
-    Region: &Region{X1: 0, Y1: 0, X2: 540, Y2: 960},
-    Threshold: 0.8,
-}
+2. Create YAML definition in `bin/templates/definitions/`:
+```yaml
+- name: MyTemplate
+  file: MyTemplate.png
+  region:
+    x1: 0
+    y1: 0
+    x2: 540
+    y2: 960
+  threshold: 0.8
+  description: "Description of what this template matches"
+```
+
+### Creating Account Pools
+
+Create YAML file in `bin/pools/`:
+
+```yaml
+pool_name: "My Pool"
+description: "Accounts with specific criteria"
+
+config:
+  queries:
+    - name: "High Shinedust"
+      sql: "SELECT * FROM accounts WHERE total_shinedust > ?"
+      parameters:
+        - 50000
+
+  sort_by:
+    - column: total_shinedust
+      order: DESC
+
+  limit: 100
+  auto_refresh:
+    enabled: true
+    interval: 60
 ```
 
 ## Contributing
@@ -212,48 +296,56 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ### Development Priorities
 
+See [ROADMAP.md](ROADMAP.md) for detailed development plan.
+
 Current focus areas:
-- Completing action library implementations
-- Refactoring template string references to use template definitions
-- Card recognition and logging
-- Database integration
-- Error handling and recovery
-- Test coverage
+- Individual bot lifecycle controls (pause/resume/stop per instance)
+- Real-time status polling and updates
+- Health monitoring and auto-restart
+- Domain-specific routine library (Pokemon TCG Pocket)
+- GUI enhancements for pool and orchestration management
 
-## Roadmap
+## Architecture Highlights
 
-### Phase 1: Core Parity (Current)
-- Complete all AHK bot functionality in Go
-- Stabilize multi-instance management
-- Refine template matching
-- Implement error recovery
+### Two-Tier Account Conflict Resolution
 
-### Phase 2: Enhanced Features
-- Card recognition and rarity detection
-- OCR for text extraction
-- Database logging and statistics
-- Advanced pack opening logic
+1. **Orchestration ID (UUID)** - Isolates execution contexts per bot group
+   - Prevents stale execution records from affecting new runs
+   - Tracked in `routine_executions` table with indexes
 
-### Phase 3: Community Features
-- Discord webhook integration
-- Wonder Pick group coordination
-- Save-for-Trade automation
-- Web-based dashboard
+2. **Database Checkout Mutex** - Global source of truth for account injection
+   - Atomic checkout operations prevent duplicate injections
+   - 10-minute stale detection for crash recovery
+   - Defer & retry logic for account conflicts
 
-### Phase 4: Polish
-- Comprehensive testing
-- Performance optimization
-- Documentation completion
-- User-friendly installer
+### Routine System
+
+- **Build-Execute Pattern** - Routines compiled once, executed many times
+- **Shared Registries** - Memory efficient for multi-instance coordination
+- **Thread-Safe State** - Atomic operations with mutex protection
+- **Sentry Supervision** - Parallel error monitoring with recovery actions
+- **Variable Interpolation** - Runtime `${variable}` substitution
+
+### Account Pool Architecture
+
+- **Pool Definitions** - Shared YAML templates for account queries
+- **Execution-Specific Pools** - Per-orchestration queue instances
+- **SQL Filtering** - Complex queries with parameters and sorting
+- **Progress Monitoring** - InitialAccountCount tracking for UI display
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for complete system design.
 
 ## Known Issues
 
-- Some action library methods are stubs
-- Error monitoring needs completion
-- OCR not yet implemented
-- Discord webhooks not implemented
-- Template string references need refactoring to use definitions
-- Windows-only testing (Linux/macOS untested)
+- Individual bot controls not yet in GUI (can launch/stop groups only)
+- Real-time status updates require manual refresh
+- Health monitoring stubbed but not implemented
+- Auto-restart policy not implemented
+- Sentry metrics not visible in GUI
+- OCR engine placeholder only
+- Discord webhooks placeholder only
+- Domain-specific routines minimal (infrastructure ready)
+- Windows-only testing (Linux/macOS untested but should work)
 
 ## Deprecating AHK Version
 

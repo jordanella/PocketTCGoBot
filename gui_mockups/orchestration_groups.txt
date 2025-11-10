@@ -1,0 +1,55 @@
+|--------------------------------------------------------------------------------------------------------------|
+|   Orchestration Groups                                                                                       |
+|--------------------------------------------------------------------------------------------------------------|
+|   Active Groups                                                                                            | |
+|    ------------------------------------------------------------------------------------------------------  | |
+|   |   Orchestration Group Name <orchestrationID>                                                <active> | |-|                                    
+|   |   <description...>                                                                                   | |#|                                     
+|   |   Started <started at>   Pool Progress <remaining>/<total>                                           |
+|   |   Account Pools <pool A> <pool B>                                                                    |      
+|   |   Active Instances <instance A> <instance B> <instance C>                                            |  
+|   |   Other Instances <instance A> <instance B> <instance C> and # more...                               |
+|   |   [ + Instance ] [ Pause/Resume ] [ Stop ] [ Shutdown ]                                              |
+|    ------------------------------------------------------------------------------------------------------
+|   
+|   Inactive Groups
+|    ------------------------------------------------------------------------------------------------------ 
+|   |   Orchestration Group Name <orchestrationID>                                                <active> | 
+|   |   <description...>                                                                                   |
+|   |   Account Pools <pool A> <pool B>                                                                    |  
+|   |   Associated Instances <instance A> <instance B> <instance C> and # more...                          |
+|   |   [ Launch ] [ Configure ]                                                                           |
+|    ------------------------------------------------------------------------------------------------------
+|--------------------------------------------------------------------------------------------------------------|
+
+
+|--------------------------------------------------------------------------------------------------------------|
+|   Orchestration Group <active>                                                            [ Rename ] @modal  |
+|--------------------------------------------------------------------------------------------------------------|
+|                                                                                                            | |
+|   Description [ Edit ] @modal                                                                              |-|                                                         
+|   Description of the orchestration group.                                                                  |#|
+|
+|   Account Pools
+|   Pool A [ Remove ][ Disable/Enable ]
+|   Pool B [ Remove ][ Disable/Enable ]
+|   [ + Account Pool ]
+|   
+|   Instances {instance_count}
+|
+|   Associated Instances
+|   Instance A [ ▲ ][ ▼ ][ Remove ][ Disable/Enable ]
+|   Instance B [ ▲ ][ ▼ ][ Remove ][ Disable/Enable ]
+|   [ + Instance ]
+|
+|   Overrides
+|   Limit Accounts { }
+|   Account Limit {limit}
+|   Sorting { }
+|   {column ▼} {order ▼} [ ▲ ][ ▼ ][ Remove ][ Disable/Enable ]
+|   {column ▼} {order ▼} [ ▲ ][ ▼ ][ Remove ][ Disable/Enable ]
+|   [ + Sort ]
+|
+|--------------------------------------------------------------------------------------------------------------|
+|   [Save /Changes/]/[Save as Copy]@modal//[Discard Changes]//[Launch][Pause/Resume][Stop][Shutdown]/[Cancel]
+|--------------------------------------------------------------------------------------------------------------|

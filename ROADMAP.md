@@ -1,13 +1,23 @@
 # PocketTCGoBot - Development Roadmap
 
-This document outlines the development roadmap for achieving a functioning multi-instance bot prototype with full lifecycle controls.
+This document outlines the development roadmap for achieving a production-ready multi-instance bot with full lifecycle controls.
 
-## Current Status: Functioning Prototype Development
+## Current Status: v0.1.0 - Core Infrastructure Complete
 
-**Core Infrastructure:** ✅ Complete (Actions, Routines, Sentries, Registries)
-**Instance Management:** 🚧 In Progress (Bot Manager complete, GUI controls needed)
-**Domain Scripts:** 🚧 In Progress (Infrastructure ready, organization needed)
-**Production Ready:** ⏳ Planned
+**Core Infrastructure:** ✅ Complete (Actions, Routines, Sentries, Registries, Orchestrator, Account Pools, Database)
+**Orchestration System:** ✅ Complete (UUID isolation, database checkout mutex)
+**Instance Management:** 🚧 In Progress (Orchestrator complete, GUI controls needed)
+**Domain Scripts:** 🚧 In Progress (Infrastructure ready, Pokemon TCG Pocket routines needed)
+**Production Ready:** ⏳ Planned (v1.0.0)
+
+### Recent Completions (2025-11-10)
+
+- ✅ Orchestration ID system with UUID per bot group
+- ✅ Database checkout mutex for account conflict prevention
+- ✅ Account pool system with SQL queries and filtering
+- ✅ MVC architecture for templates, routines, and pools
+- ✅ Complete ARCHITECTURE.md documentation
+- ✅ 11 database migrations with proper versioning
 
 ---
 
@@ -226,40 +236,62 @@ This document outlines the development roadmap for achieving a functioning multi
 
 ## COMPLETED FEATURES ✅
 
-### Core Architecture (Complete)
-- ✅ **41 Actions** - Click, Swipe, CV, Loops, Variables, Conditionals
-- ✅ **Routine System** - YAML-based with eager loading registry
-- ✅ **Sentry Supervision** - Parallel monitoring routines
-- ✅ **Template Registry** - Image caching with YAML definitions
-- ✅ **Variable System** - Per-instance stores with interpolation
-- ✅ **Config System** - User-configurable parameters with overrides
-- ✅ **Multi-Instance Bot Manager** - Shared registries architecture
+### Core Architecture (v0.1.0)
+- ✅ **41 Actions** - Click, Swipe, CV, Loops, Variables, Conditionals, Account Management
+- ✅ **Routine System** - YAML-based with eager loading registry and composition
+- ✅ **Sentry Supervision** - Parallel monitoring routines with recovery actions
+- ✅ **Template Registry** - Image caching with YAML definitions (236+ templates)
+- ✅ **Variable System** - Per-instance stores with `${variable}` interpolation
+- ✅ **Config System** - User-configurable parameters with runtime overrides
+- ✅ **Bot Group Orchestrator** - Multi-instance coordination with shared registries
 - ✅ **Routine Controller** - State machine (Idle/Running/Paused/Stopped/Completed)
-- ✅ **Routine Composition** - RunRoutine with config overrides
-- ✅ **Comprehensive Documentation** - 14+ markdown docs
+- ✅ **Comprehensive Documentation** - 15+ markdown docs including complete ARCHITECTURE.md
+
+### Orchestration System (v0.1.0)
+- ✅ **Orchestration ID** - UUID per bot group for execution context isolation
+- ✅ **Database Checkout Mutex** - Global account injection conflict prevention
+- ✅ **Account Pool Manager** - SQL queries, manual include/exclude, watched paths
+- ✅ **Pool Definitions** - Shared YAML templates with execution-specific pools
+- ✅ **Progress Monitoring** - InitialAccountCount tracking for UI display
+- ✅ **Stale Detection** - 10-minute timeout for crash recovery
+- ✅ **Cleanup on Shutdown** - Release all account checkouts for orchestration
+
+### Database Integration (v0.1.0)
+- ✅ **SQLite Backend** - Account storage, routine executions, checkout tracking
+- ✅ **Migration System** - 11 migrations with proper versioning
+- ✅ **Migration 010** - orchestration_id in routine_executions table
+- ✅ **Migration 011** - Checkout columns in accounts table
+- ✅ **Account Checkout API** - Complete CRUD operations in account_checkout.go
+- ✅ **Routine Execution Tracking** - Per-account lifecycle with orchestration context
 
 ### Registration Systems (Complete)
-- ✅ Action Registry - 41 actions mapped
-- ✅ Template Registry - Dynamic YAML loading with caching
-- ✅ Routine Registry - Metadata, validation, tag filtering
+- ✅ **Action Registry** - 41 actions mapped and documented
+- ✅ **Template Registry** - Dynamic YAML loading with caching
+- ✅ **Routine Registry** - Metadata, validation, tag filtering, reload support
+- ✅ **Pool Manager** - Pool definition registry with MVC architecture
 
-### Recent Implementations (Last 7 Days)
-- ✅ Config overrides for RunRoutine
-- ✅ Variable interpolation (`${variable_name}`)
-- ✅ Nested routine execution
-- ✅ Enhanced validation
-- ✅ Sentry structures and engine
+### GUI Features (v0.1.0)
+- ✅ **Multi-Tab Interface** - Dashboard, bot launcher, ADB test, config
+- ✅ **Account Pool Wizard** - Visual query builder for pool definitions
+- ✅ **Template Manager** - Load and cache templates from YAML
+- ✅ **Routine Browser** - View, validate, and reload routines
+- ✅ **Emulator Manager** - MuMu instance detection and management
+- ✅ **Bot Group Launcher** - Launch/stop orchestration groups
 
 ---
 
 ## ARCHITECTURE STRENGTHS
 
-✅ **Build-Execute Pattern** - Routines built once, executed many times
-✅ **Shared Registries** - Memory efficient for multi-instance
+✅ **Build-Execute Pattern** - Routines compiled once, executed many times
+✅ **Shared Registries** - Memory efficient for multi-instance coordination
 ✅ **Thread-Safe State Management** - Atomic operations + mutexes
-✅ **Extensible Action System** - Easy to add new actions
+✅ **Two-Tier Conflict Resolution** - Orchestration ID + Database checkout mutex
+✅ **Execution Context Isolation** - UUID per bot group prevents cross-contamination
+✅ **Database Source of Truth** - Account checkout tracked in SQLite
+✅ **Extensible Action System** - Easy to add new actions via registry
 ✅ **Clean Separation** - Instance state vs shared resources
-✅ **Comprehensive Validation** - Early error detection
+✅ **Comprehensive Validation** - Early error detection with helpful messages
+✅ **MVC Architecture** - Proper separation for templates, routines, pools
 
 ---
 
@@ -405,7 +437,17 @@ These will be revisited once the core prototype is functioning and domain-specif
 
 ---
 
-**Last Updated:** 2025-11-08
-**Current Version:** v0.1.0-prototype
-**Next Milestone:** v0.2.0 - Individual Bot Controls (Week 1)
-**Focus:** Phase 1 - Instance Lifecycle Controls
+**Last Updated:** 2025-11-10
+**Current Version:** v0.1.0
+**Next Milestone:** v0.2.0 - Individual Bot Controls
+**Current Focus:** Phase 1 - Instance Lifecycle Controls
+
+### Version History
+
+- **v0.1.0** (2025-11-10) - Core infrastructure complete
+  - 41 actions, routine system, sentry engine
+  - Orchestration ID system with UUID per bot group
+  - Database checkout mutex for account conflicts
+  - Account pool manager with SQL filtering
+  - Complete ARCHITECTURE.md documentation
+  - 11 database migrations

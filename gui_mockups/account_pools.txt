@@ -1,0 +1,105 @@
+|--------------------------------------------------------------------------------------------------------------|
+| Account Pool Management												  [ New ] [ Refresh ] [ Quick Launch ] |
+|--------------------------------------------------------------------------------------------------------------|
+|         Pool List          |   Pool Name [ Rename ]                                                          |
+|----------------------------|																				   |
+| Pool Name			<type> | |   Details  |  Accounts  |  Queries  |  Include  |  Exclude                      |
+| <accounts>     <updated> | |---------------------------------------------------------------------------------|
+| <description...>         |-|
+|--------------------------|#|   @Details
+| Pool Name			<type> |#|   
+| <accounts>     <updated> |#|   Description [ Edit ]                                                          
+| <description...>         |#|   Description about the pool.
+|--------------------------|#|
+| Pool Name			<type> |#|   Total Accounts ### (last updated ../../.. ..:.. ..) [ Refresh ]
+| <accounts>     <updated> |#|
+| <description...>         |#|   Queries
+|--------------------------|#|   <QUERY STRING> [ ▲ ][ ▼ ][ Edit ][ Remove ]
+| Pool Name			<type> |#|   <QUERY STRING> [ ▲ ][ ▼ ][ Edit ][ Remove ]
+| <accounts>     <updated> |#|   [ + Query ]
+| <description...>         |#|   
+|--------------------------|#|   Inclusions ### [ Edit ]
+| [      + New Pool      ] |#|   Exclusions ### [ Edit ]
+|                          |#|
+|                          |#|   Sorting
+|                          |#|   {column ▼} {order ▼} [ ▲ ][ ▼ ][ Remove ]
+|                          |#|   {column ▼} {order ▼} [ ▲ ][ ▼ ][ Remove ]
+|                          |#|   [ + Sort ]
+|                          |#|    
+|                          |#|   Limit {limit}
+|                          |#|    
+|                          |#|   Auto-Refresh
+|                          |#|   Enabled   { }
+|                          |#|   Frequency {frequency}
+|                          |#|   
+|                          |#|   [ Save Changes ] [ Discard Changes ] [ Delete Pool ]
+|                          |#|   
+|                          |#|   
+|                          |#|   @Accounts
+|                          |#|   
+|                          |#|   Account           | Packs | Shinedust ▼ | Status                              
+|                          |#|   ------------------------------------------------------------------------------
+|                          |#|   deviceAccount     |    12 |    86,500   | Active - routine_label  [ Details ] 
+|                          |#|   deviceAccount     |    12 |    73,500   | Idle                                
+|                          |#|   deviceAccount     |    12 |     6,500   | Idle                                
+|                          |#|   deviceAccount     |    12 |       500   | Idle                                
+|                          |#|   
+|                          |#|   
+|                          |#|   @Query Modal
+|                          |#|   
+|                          |#|   Query Name [ Rename ]
+|                          |#|   
+|                          |#|   <QUERY SUMMARY STRING>
+|                          |#|   
+|                          |#|   Filters
+|                          |#|   {column ▼} {comparator ▼} {value} [ Remove ]
+|                          |#|   [ + Filter ]
+|                          |#|
+|                          |#|   Matching Accounts # [ Test ]
+|                          |#|   
+|                          |#|   Account           | Packs | Shinedust ▼ | Status                              
+|                          |#|   ------------------------------------------------------------------------------
+|                          |#|   deviceAccount     |    12 |    86,500   | Active                  [ Details ] 
+|                          |#|   deviceAccount     |    12 |    73,500   | Idle                    [ Details ] 
+|                          |#|   deviceAccount     |    12 |     6,500   | Idle                    [ Details ] 
+|                          |#|   deviceAccount     |    12 |       500   | Idle                    [ Details ] 
+|                          |#|
+|                          |#|   [ Save /Changes/ ] [ Cancel ] /[ Delete Query ]/
+|                          |#|
+|                          |#|
+|                          |#|   @Include
+|                          |#|   
+|                          |#|   {deviceAccount} [ Include Account ]
+|                          |#|   
+|                          |#|   Account           | Packs | Shinedust ▼ | Status                              
+|                          |#|   ------------------------------------------------------------------------------
+|                          |#|   deviceAccount     |    12 |    86,500   | Active       [ Details ] [ Remove ] 
+|                          |#|   deviceAccount     |    12 |    73,500   | Idle         [ Details ] [ Remove ] 
+|                          |#|   deviceAccount     |    12 |     6,500   | Idle         [ Details ] [ Remove ] 
+|                          |#|   deviceAccount     |    12 |       500   | Idle         [ Details ] [ Remove ] 
+|                          |#|
+|                          |#|
+|                          |#|   @Exclude
+|                          |#|   
+|                          |#|   {deviceAccount} [ Exclude Account ]
+|                          |#|   
+|                          |#|   Account           | Packs | Shinedust ▼ | Status                              
+|                          |#|   ------------------------------------------------------------------------------
+|                          |#|   deviceAccount     |    12 |    86,500   | Active       [ Details ] [ Remove ] 
+|                          |#|   deviceAccount     |    12 |    73,500   | Idle         [ Details ] [ Remove ] 
+|                          |#|   deviceAccount     |    12 |     6,500   | Idle         [ Details ] [ Remove ] 
+|                          |#|   deviceAccount     |    12 |       500   | Idle         [ Details ] [ Remove ] 
+|                          |#|   
+|                          |#|   
+|                          |#|   @Pool Account Modal
+|                          |#|   
+|                          |#|   Account Name                                                          
+|                          |#|
+|                          |#|   Sources
+|                          |#|   Query A
+|                          |#|   Query B
+|                          |#|   Include [ Remove ]
+|                          |#|   
+|                          |#|   [ View Account ] [ Include ] [ Exclude ]
+|                          |#| 
+|--------------------------------------------------------------------------------------------------------------|
