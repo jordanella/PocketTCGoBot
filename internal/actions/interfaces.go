@@ -32,6 +32,7 @@ type BotInterface interface {
 	Routines() RoutineRegistryInterface
 	RoutineController() RoutineControllerInterface
 	Variables() VariableStoreInterface
+	SentryManager() *SentryManager
 
 	// Context management
 	Context() context.Context

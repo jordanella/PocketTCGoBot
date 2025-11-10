@@ -56,13 +56,6 @@ func (re *RoutineExecutor) LoadSentryRoutines(bot BotInterface) error {
 
 // Execute runs the main routine with sentry monitoring
 func (re *RoutineExecutor) Execute(bot BotInterface) error {
-	// Load sentry routines if not already loaded
-	if len(re.sentries) > 0 && re.sentries[0].GetRoutineBuilder() == nil {
-		if err := re.LoadSentryRoutines(bot); err != nil {
-			return fmt.Errorf("failed to load sentry routines: %w", err)
-		}
-	}
-
 	// Initialize routine controller state
 	controller := bot.RoutineController()
 	if controller != nil {
@@ -75,19 +68,26 @@ func (re *RoutineExecutor) Execute(bot BotInterface) error {
 		}()
 	}
 
-	// Start sentry engine if sentries are configured
+	// Register sentries with global sentry manager
+	// This handles deduplication and reference counting
 	if len(re.sentries) > 0 {
-		re.sentryEngine = NewSentryEngine(bot, re.sentries)
-		if err := re.sentryEngine.Start(); err != nil {
-			return fmt.Errorf("failed to start sentry engine: %w", err)
+		sentryMgr := bot.SentryManager()
+		if sentryMgr == nil {
+			return fmt.Errorf("sentry manager not available")
 		}
-		defer re.sentryEngine.Stop()
+
+		if err := sentryMgr.Register(re.sentries); err != nil {
+			return fmt.Errorf("failed to register sentries: %w", err)
+		}
+
+		// Ensure sentries are unregistered when routine completes
+		defer sentryMgr.Unregister(re.sentries)
 	}
 
 	// Execute the main routine
 	err := re.routine.Execute(bot)
 
-	// Sentry engine will be stopped by defer
+	// Sentries will be unregistered by defer
 	return err
 }
 
