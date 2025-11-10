@@ -491,12 +491,14 @@ func (t *AccountPoolsTab) showUnifiedPoolEditor(poolDef *accountpool.PoolDefinit
 	// Pre-populate wizard with existing values
 	wizard.description = poolDef.Config.Description
 
-	// Convert queries
+	// Convert queries to structured format
 	wizard.queries = make([]QueryConfig, len(poolDef.Config.Queries))
 	for i, q := range poolDef.Config.Queries {
 		wizard.queries[i] = QueryConfig{
-			Name: q.Name,
-			SQL:  q.SQL,
+			Name:    q.Name,
+			Filters: q.Filters,
+			Sort:    q.Sort,
+			Limit:   q.Limit,
 		}
 	}
 

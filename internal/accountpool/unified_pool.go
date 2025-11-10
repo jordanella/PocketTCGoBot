@@ -39,11 +39,80 @@ type UnifiedPoolDefinition struct {
 	Config      UnifiedPoolConfig  `yaml:"config"`                 // Pool configuration
 }
 
-// QuerySource represents a single SQL query for populating accounts
+// QuerySource represents a single query for populating accounts
+// Uses structured filters instead of raw SQL for easy unmarshaling and GUI building
 type QuerySource struct {
-	Name       string                 `yaml:"name"`
-	SQL        string                 `yaml:"sql"`
+	Name    string        `yaml:"name"`
+	Filters []QueryFilter `yaml:"filters,omitempty"` // Filter conditions (combined with AND)
+	Sort    []SortOrder   `yaml:"sort,omitempty"`    // Sort orders (applied in sequence)
+	Limit   int           `yaml:"limit,omitempty"`   // Result limit (0 = no limit)
+
+	// Deprecated: Use Filters instead. Kept for backward compatibility.
+	SQL        string                 `yaml:"sql,omitempty"`
 	Parameters map[string]interface{} `yaml:"parameters,omitempty"`
+}
+
+// QueryFilter represents a single filter condition
+type QueryFilter struct {
+	Column     string `yaml:"column"`     // Database column name (e.g., "packs_opened")
+	Comparator string `yaml:"comparator"` // Comparison operator (e.g., ">=", "=", "<", "LIKE")
+	Value      string `yaml:"value"`      // Comparison value
+}
+
+// SortOrder represents a sort ordering
+type SortOrder struct {
+	Column    string `yaml:"column"`    // Column to sort by
+	Direction string `yaml:"direction"` // "asc" or "desc"
+}
+
+// GenerateSQL generates a SQL query from structured filters
+func (q *QuerySource) GenerateSQL() (string, []interface{}) {
+	var sb strings.Builder
+	params := make([]interface{}, 0)
+
+	// Base SELECT statement
+	sb.WriteString("SELECT device_account, device_password, shinedust, packs_opened, last_used_at\n")
+	sb.WriteString("FROM accounts\n")
+
+	// WHERE clause from filters
+	if len(q.Filters) > 0 {
+		sb.WriteString("WHERE ")
+		for i, filter := range q.Filters {
+			if i > 0 {
+				sb.WriteString("\n  AND ")
+			}
+			sb.WriteString(filter.Column)
+			sb.WriteString(" ")
+			sb.WriteString(filter.Comparator)
+			sb.WriteString(" ?")
+
+			// Add parameter value
+			params = append(params, filter.Value)
+		}
+		sb.WriteString("\n")
+	}
+
+	// ORDER BY clause
+	if len(q.Sort) > 0 {
+		sb.WriteString("ORDER BY ")
+		for i, sort := range q.Sort {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(sort.Column)
+			sb.WriteString(" ")
+			sb.WriteString(strings.ToUpper(sort.Direction))
+		}
+		sb.WriteString("\n")
+	}
+
+	// LIMIT clause
+	if q.Limit > 0 {
+		sb.WriteString("LIMIT ")
+		sb.WriteString(fmt.Sprintf("%d", q.Limit))
+	}
+
+	return sb.String(), params
 }
 
 // UnifiedPoolConfig holds pool behavior configuration
@@ -242,15 +311,25 @@ func (p *UnifiedAccountPool) refresh() error {
 
 // executeQuery executes a single query and returns accounts
 func (p *UnifiedAccountPool) executeQuery(query QuerySource) ([]*Account, error) {
-	// Build parameter array
-	params := make([]interface{}, 0)
-	// Note: For now, we don't use named parameters - SQL should be complete
-	// In future, could add parameter substitution
+	var sqlQuery string
+	var params []interface{}
+
+	// Generate SQL from structured filters (preferred) or use legacy SQL
+	if len(query.Filters) > 0 || len(query.Sort) > 0 || query.Limit > 0 {
+		// Use structured query
+		sqlQuery, params = query.GenerateSQL()
+	} else if query.SQL != "" {
+		// Legacy SQL support
+		sqlQuery = query.SQL
+		params = make([]interface{}, 0)
+	} else {
+		return nil, fmt.Errorf("query '%s' has neither filters nor SQL", query.Name)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	rows, err := p.db.QueryContext(ctx, query.SQL, params...)
+	rows, err := p.db.QueryContext(ctx, sqlQuery, params...)
 	if err != nil {
 		return nil, fmt.Errorf("query execution failed: %w", err)
 	}

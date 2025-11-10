@@ -1,12 +1,14 @@
-# Example Unified Account Pool Configuration
-# This is the new unified pool type that replaces both file and SQL pools
+# Example Unified Account Pool Configuration (LEGACY FORMAT)
+# This shows the old raw SQL format which is still supported but deprecated
+# Use example_structured_pool.yaml.example for the new filter-based format
 # Rename this file to .yaml (remove .example) to activate it
 
-pool_name: "example_unified_pool"
-description: "Example unified pool with queries, inclusions, exclusions, and watched paths"
+pool_name: "example_unified_pool_legacy"
+description: "Example pool using legacy raw SQL (deprecated - use structured filters instead)"
 
-# Query sources (optional) - Execute SQL queries to populate accounts
-# Results from all queries are combined
+# DEPRECATED: Raw SQL queries
+# This format still works but is harder to edit and not GUI-friendly
+# Use structured filters (see example_structured_pool.yaml.example) for new pools
 queries:
   - name: "high_pack_accounts"
     sql: |
@@ -16,7 +18,6 @@ queries:
       AND is_active = 1
       AND is_banned = 0
       ORDER BY packs_opened DESC
-    parameters: {}
 
   - name: "recently_active"
     sql: |
@@ -25,7 +26,6 @@ queries:
       WHERE last_used_at >= datetime('now', '-7 days')
       AND is_active = 1
       ORDER BY last_used_at DESC
-    parameters: {}
 
 # Manual inclusions (optional) - Explicitly add specific accounts
 # These accounts will be fetched from the database

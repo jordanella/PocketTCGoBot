@@ -1,0 +1,149 @@
+# Example Structured Account Pool Configuration
+# Uses filter-based queries instead of raw SQL for easier GUI editing
+
+pool_name: "example_structured_pool"
+description: "Example pool using structured filters (recommended)"
+
+# Query sources using structured filters
+# Each query is a collection of filters combined with AND
+queries:
+  - name: "high_pack_accounts"
+    filters:
+      - column: "packs_opened"
+        comparator: ">="
+        value: "10"
+      - column: "is_active"
+        comparator: "="
+        value: "1"
+      - column: "is_banned"
+        comparator: "="
+        value: "0"
+    sort:
+      - column: "packs_opened"
+        direction: "desc"
+    limit: 100
+
+  - name: "recently_active"
+    filters:
+      - column: "last_used_at"
+        comparator: ">="
+        value: "datetime('now', '-7 days')"
+      - column: "is_active"
+        comparator: "="
+        value: "1"
+    sort:
+      - column: "last_used_at"
+        direction: "desc"
+    limit: 50
+
+  - name: "high_shinedust"
+    filters:
+      - column: "shinedust"
+        comparator: ">"
+        value: "50000"
+      - column: "is_banned"
+        comparator: "="
+        value: "0"
+    sort:
+      - column: "shinedust"
+        direction: "desc"
+      - column: "packs_opened"
+        direction: "desc"
+    limit: 25
+
+# Manual inclusions - specific accounts to add
+include:
+  - "premium_account@example.com"
+  - "test_account@example.com"
+
+# Manual exclusions - accounts to remove (applied last)
+exclude:
+  - "banned_account@example.com"
+  - "maintenance_account@example.com"
+
+# Watched paths - folders to import XMLs from
+watched_paths:
+  - "C:/accounts/premium"
+  - "./imported_accounts"
+
+# Pool configuration
+config:
+  retry_failed: true
+  max_failures: 3
+  refresh_interval: 300  # Auto-refresh every 5 minutes (0 = disabled)
+
+# ==========================================
+# Available Columns:
+# ==========================================
+# - device_account (string)
+# - device_password (string)
+# - shinedust (integer)
+# - packs_opened (integer)
+# - total_shinedust (integer)
+# - pack_points (integer)
+# - wonder_picks (integer)
+# - hourglasses (integer)
+# - level (integer)
+# - is_active (0/1)
+# - is_banned (0/1)
+# - created_at (datetime)
+# - last_used_at (datetime)
+# - last_modified_at (datetime)
+# - stamina_recovery_at (datetime)
+
+# ==========================================
+# Available Comparators:
+# ==========================================
+# - = (equals)
+# - != (not equals)
+# - > (greater than)
+# - >= (greater than or equal)
+# - < (less than)
+# - <= (less than or equal)
+# - LIKE (pattern matching, use % wildcards)
+# - IN (value in list)
+# - IS NULL
+# - IS NOT NULL
+
+# ==========================================
+# Sort Directions:
+# ==========================================
+# - asc (ascending)
+# - desc (descending)
+
+# ==========================================
+# Examples:
+# ==========================================
+
+# Query for accounts with no packs:
+#   - name: "no_packs"
+#     filters:
+#       - column: "packs_opened"
+#         comparator: "="
+#         value: "0"
+#     sort:
+#       - column: "created_at"
+#         direction: "desc"
+
+# Query for recently created accounts:
+#   - name: "new_accounts"
+#     filters:
+#       - column: "created_at"
+#         comparator: ">="
+#         value: "datetime('now', '-1 day')"
+#     sort:
+#       - column: "created_at"
+#         direction: "desc"
+
+# Query for active accounts with stamina:
+#   - name: "ready_accounts"
+#     filters:
+#       - column: "is_active"
+#         comparator: "="
+#         value: "1"
+#       - column: "stamina_recovery_at"
+#         comparator: "<="
+#         value: "datetime('now')"
+#     sort:
+#       - column: "stamina_recovery_at"
+#         direction: "asc"

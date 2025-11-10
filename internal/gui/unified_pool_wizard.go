@@ -35,10 +35,12 @@ type UnifiedPoolWizard struct {
 	wizard      *dialog.CustomDialog
 }
 
-// QueryConfig holds a single query configuration
+// QueryConfig holds a single query configuration with structured filters
 type QueryConfig struct {
-	Name string
-	SQL  string
+	Name    string
+	Filters []accountpool.QueryFilter
+	Sort    []accountpool.SortOrder
+	Limit   int
 }
 
 // NewUnifiedPoolWizard creates a new wizard for unified pool creation
@@ -181,7 +183,8 @@ func (w *UnifiedPoolWizard) showQueryEditor(index int) {
 	// Create a visual filter builder
 	vqb := NewVisualQueryBuilder()
 	if existingQuery != nil {
-		vqb.ParseSQL(existingQuery.SQL)
+		// TODO: Load existing structured filters into vqb
+		// For now, this is empty - queries created will use new structure
 	}
 
 	// Preview of generated SQL
@@ -197,31 +200,13 @@ func (w *UnifiedPoolWizard) showQueryEditor(index int) {
 	vqb.SetOnChange(updatePreview)
 	updatePreview()
 
-	// Tab view for visual builder vs raw SQL
-	visualTab := container.NewTabItem("Visual Builder", vqb.BuildUI(w.window))
-
-	rawSQLEntry := widget.NewMultiLineEntry()
-	rawSQLEntry.SetPlaceHolder(`SELECT device_account, device_password, shinedust, packs_opened, last_used_at
-FROM accounts
-WHERE is_active = 1
-ORDER BY packs_opened DESC`)
-	rawSQLEntry.SetMinRowsVisible(10)
-	if existingQuery != nil {
-		rawSQLEntry.SetText(existingQuery.SQL)
-	}
-	rawTab := container.NewTabItem("Raw SQL", container.NewVBox(
-		widget.NewLabel("Advanced: Edit raw SQL directly"),
-		widget.NewLabel("Required columns: device_account, device_password, shinedust, packs_opened, last_used_at"),
-		rawSQLEntry,
-	))
-
-	tabs := container.NewAppTabs(visualTab, rawTab)
-
+	// Visual builder (structured filters)
 	form := container.NewVBox(
 		widget.NewLabel("Query Name:"),
 		nameEntry,
 		widget.NewSeparator(),
-		tabs,
+		widget.NewLabel("Filters (combined with AND):"),
+		vqb.BuildUI(w.window),
 		widget.NewSeparator(),
 		previewLabel,
 		previewText,
@@ -238,22 +223,21 @@ ORDER BY packs_opened DESC`)
 			return
 		}
 
-		// Get SQL from the active tab
-		var sql string
-		if tabs.Selected() == visualTab {
-			sql = vqb.GenerateSQL()
-		} else {
-			sql = strings.TrimSpace(rawSQLEntry.Text)
-		}
+		// Get structured query from visual builder (always use visual builder now)
+		filters := vqb.ExportFilters()
+		sort := vqb.ExportSort()
+		limit := vqb.ExportLimit()
 
-		if sql == "" {
-			dialog.ShowError(fmt.Errorf("SQL query cannot be empty"), w.window)
+		if len(filters) == 0 {
+			dialog.ShowError(fmt.Errorf("at least one filter is required"), w.window)
 			return
 		}
 
 		newQuery := QueryConfig{
-			Name: name,
-			SQL:  sql,
+			Name:    name,
+			Filters: filters,
+			Sort:    sort,
+			Limit:   limit,
 		}
 
 		if index >= 0 {
@@ -451,12 +435,14 @@ func (w *UnifiedPoolWizard) showStep5Configuration() {
 
 // createPoolDefinition builds the final pool definition and calls the completion callback
 func (w *UnifiedPoolWizard) createPoolDefinition() {
-	// Convert queries
+	// Convert queries to structured format
 	queries := make([]accountpool.QuerySource, len(w.queries))
 	for i, q := range w.queries {
 		queries[i] = accountpool.QuerySource{
-			Name: q.Name,
-			SQL:  q.SQL,
+			Name:    q.Name,
+			Filters: q.Filters,
+			Sort:    q.Sort,
+			Limit:   q.Limit,
 		}
 	}
 
@@ -708,4 +694,37 @@ func (vqb *VisualQueryBuilder) ParseSQL(sql string) {
 			vqb.limit = val
 		}
 	}
+}
+
+// ExportFilters exports the current filters as structured QueryFilter slice
+func (vqb *VisualQueryBuilder) ExportFilters() []accountpool.QueryFilter {
+	filters := make([]accountpool.QueryFilter, 0, len(vqb.filters))
+	for _, f := range vqb.filters {
+		if f.field != "" && f.value != "" {
+			filters = append(filters, accountpool.QueryFilter{
+				Column:     f.field,
+				Comparator: f.operator,
+				Value:      f.value,
+			})
+		}
+	}
+	return filters
+}
+
+// ExportSort exports the current sort configuration as structured SortOrder slice
+func (vqb *VisualQueryBuilder) ExportSort() []accountpool.SortOrder {
+	if vqb.sortBy == "" {
+		return nil
+	}
+	return []accountpool.SortOrder{
+		{
+			Column:    vqb.sortBy,
+			Direction: strings.ToLower(vqb.sortDir),
+		},
+	}
+}
+
+// ExportLimit returns the configured limit
+func (vqb *VisualQueryBuilder) ExportLimit() int {
+	return vqb.limit
 }
