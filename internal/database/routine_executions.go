@@ -30,7 +30,8 @@ type RoutineExecution struct {
 	ID               int64
 	AccountID        int64
 	RoutineName      string
-	ExecutionStatus  string // 'started', 'completed', 'failed'
+	OrchestrationID  *string // UUID identifying this bot group execution context
+	ExecutionStatus  string  // 'started', 'completed', 'failed'
 	StartedAt        time.Time
 	CompletedAt      *time.Time
 	DurationSeconds  *int
@@ -41,16 +42,18 @@ type RoutineExecution struct {
 }
 
 // StartRoutineExecution records the start of a routine execution
-func StartRoutineExecution(db *sql.DB, accountID int64, routineName string, botInstance int) (int64, error) {
+// orchestrationID should be a UUID identifying this specific bot group execution context
+func StartRoutineExecution(db *sql.DB, accountID int64, routineName string, orchestrationID string, botInstance int) (int64, error) {
 	result, err := db.Exec(`
 		INSERT INTO routine_executions (
 			account_id,
 			routine_name,
+			orchestration_id,
 			execution_status,
 			started_at,
 			bot_instance
-		) VALUES (?, ?, 'started', datetime('now'), ?)
-	`, accountID, routineName, botInstance)
+		) VALUES (?, ?, ?, 'started', datetime('now'), ?)
+	`, accountID, routineName, orchestrationID, botInstance)
 
 	if err != nil {
 		return 0, fmt.Errorf("failed to start routine execution: %w", err)
@@ -103,11 +106,14 @@ func GetRoutineExecution(db *sql.DB, executionID int64) (*RoutineExecution, erro
 	var durationSeconds sql.NullInt64
 	var errorMessage sql.NullString
 
+	var orchestrationID sql.NullString
+
 	err := db.QueryRow(`
 		SELECT
 			id,
 			account_id,
 			routine_name,
+			orchestration_id,
 			execution_status,
 			started_at,
 			completed_at,
@@ -122,6 +128,7 @@ func GetRoutineExecution(db *sql.DB, executionID int64) (*RoutineExecution, erro
 		&exec.ID,
 		&exec.AccountID,
 		&exec.RoutineName,
+		&orchestrationID,
 		&exec.ExecutionStatus,
 		&exec.StartedAt,
 		&completedAt,
@@ -137,6 +144,9 @@ func GetRoutineExecution(db *sql.DB, executionID int64) (*RoutineExecution, erro
 	}
 
 	// Handle nullable fields
+	if orchestrationID.Valid {
+		exec.OrchestrationID = &orchestrationID.String
+	}
 	if completedAt.Valid {
 		exec.CompletedAt = &completedAt.Time
 	}
@@ -154,6 +164,7 @@ func GetRoutineExecution(db *sql.DB, executionID int64) (*RoutineExecution, erro
 // GetLastRoutineExecution retrieves the most recent execution for an account and routine
 func GetLastRoutineExecution(db *sql.DB, accountID int64, routineName string) (*RoutineExecution, error) {
 	var exec RoutineExecution
+	var orchestrationID sql.NullString
 	var completedAt sql.NullTime
 	var durationSeconds sql.NullInt64
 	var errorMessage sql.NullString
@@ -163,6 +174,7 @@ func GetLastRoutineExecution(db *sql.DB, accountID int64, routineName string) (*
 			id,
 			account_id,
 			routine_name,
+			orchestration_id,
 			execution_status,
 			started_at,
 			completed_at,
@@ -179,6 +191,7 @@ func GetLastRoutineExecution(db *sql.DB, accountID int64, routineName string) (*
 		&exec.ID,
 		&exec.AccountID,
 		&exec.RoutineName,
+		&orchestrationID,
 		&exec.ExecutionStatus,
 		&exec.StartedAt,
 		&completedAt,
@@ -197,6 +210,9 @@ func GetLastRoutineExecution(db *sql.DB, accountID int64, routineName string) (*
 	}
 
 	// Handle nullable fields
+	if orchestrationID.Valid {
+		exec.OrchestrationID = &orchestrationID.String
+	}
 	if completedAt.Valid {
 		exec.CompletedAt = &completedAt.Time
 	}
@@ -234,6 +250,7 @@ func GetAccountRoutineHistory(db *sql.DB, accountID int64, routineName string, l
 			id,
 			account_id,
 			routine_name,
+			orchestration_id,
 			execution_status,
 			started_at,
 			completed_at,
@@ -260,6 +277,7 @@ func GetAccountRoutineHistory(db *sql.DB, accountID int64, routineName string, l
 	var executions []*RoutineExecution
 	for rows.Next() {
 		var exec RoutineExecution
+		var orchestrationID sql.NullString
 		var completedAt sql.NullTime
 		var durationSeconds sql.NullInt64
 		var errorMessage sql.NullString
@@ -268,6 +286,7 @@ func GetAccountRoutineHistory(db *sql.DB, accountID int64, routineName string, l
 			&exec.ID,
 			&exec.AccountID,
 			&exec.RoutineName,
+			&orchestrationID,
 			&exec.ExecutionStatus,
 			&exec.StartedAt,
 			&completedAt,
@@ -282,6 +301,9 @@ func GetAccountRoutineHistory(db *sql.DB, accountID int64, routineName string, l
 		}
 
 		// Handle nullable fields
+		if orchestrationID.Valid {
+			exec.OrchestrationID = &orchestrationID.String
+		}
 		if completedAt.Valid {
 			exec.CompletedAt = &completedAt.Time
 		}

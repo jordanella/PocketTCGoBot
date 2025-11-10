@@ -55,27 +55,82 @@ func (a *InjectNextAccount) Build(ab *ActionBuilder) *ActionBuilder {
 				return fmt.Errorf("no account pool configured in manager")
 			}
 
+			// Get database for checkout operations
+			var db *sql.DB
+			if dbProvider, ok := managerIf.(interface{ Database() *sql.DB }); ok {
+				db = dbProvider.Database()
+			}
+
+			// Get orchestration ID
+			orchestrationID := botIf.OrchestrationID()
+			if orchestrationID == "" {
+				return fmt.Errorf("bot has no orchestration ID - cannot checkout accounts")
+			}
+
 			// Create context with timeout
 			ctx, cancel := context.WithTimeout(botIf.Context(), time.Duration(a.Timeout)*time.Millisecond)
 			defer cancel()
 
-			// Request next account
-			account, err := accountPool.GetNext(ctx)
-			if err != nil {
-				// Handle no accounts available
-				if err.Error() == "no accounts available" || err.Error() == "account pool is closed" {
-					switch a.OnNoAccounts {
-					case "wait":
-						// Already waited via GetNext with timeout
-						return fmt.Errorf("timeout waiting for accounts: %w", err)
-					case "stop":
-						return fmt.Errorf("no accounts available, stopping: %w", err)
-					case "continue":
-						fmt.Printf("Bot %d: No accounts available, continuing without injection\n", botIf.Instance())
-						return nil
+			// Loop until we get an account that's not checked out elsewhere
+			var account *accountpool.Account
+			maxRetries := 10
+			for retry := 0; retry < maxRetries; retry++ {
+				// Request next account from pool
+				acc, err := accountPool.GetNext(ctx)
+				if err != nil {
+					// Handle no accounts available
+					if err.Error() == "no accounts available" || err.Error() == "account pool is closed" {
+						switch a.OnNoAccounts {
+						case "wait":
+							// Already waited via GetNext with timeout
+							return fmt.Errorf("timeout waiting for accounts: %w", err)
+						case "stop":
+							return fmt.Errorf("no accounts available, stopping: %w", err)
+						case "continue":
+							fmt.Printf("Bot %d: No accounts available, continuing without injection\n", botIf.Instance())
+							return nil
+						}
+					}
+					return fmt.Errorf("failed to get next account: %w", err)
+				}
+
+				// Check if account is already checked out (if database available)
+				if db != nil {
+					checkedOut, existingOrch, existingInst, err := database.IsAccountCheckedOut(db, acc.DeviceAccount)
+					if err != nil {
+						fmt.Printf("Bot %d: Warning - could not check account checkout status: %v\n", botIf.Instance(), err)
+					} else if checkedOut && existingOrch != orchestrationID {
+						// Account is checked out to a different orchestration - defer it
+						fmt.Printf("Bot %d: Account '%s' is checked out to orchestration %s (instance %d), deferring...\n",
+							botIf.Instance(), acc.DeviceAccount, existingOrch, existingInst)
+
+						// Put it back at the end of the queue and try next
+						go func() {
+							time.Sleep(2 * time.Second)
+							accountPool.Return(acc)
+						}()
+						continue // Try next account
 					}
 				}
-				return fmt.Errorf("failed to get next account: %w", err)
+
+				// Account is available, use it
+				account = acc
+				break
+			}
+
+			if account == nil {
+				return fmt.Errorf("failed to get available account after %d retries (all were checked out)", maxRetries)
+			}
+
+			// Atomically checkout the account in the database BEFORE injection
+			if db != nil {
+				if err := database.CheckoutAccount(db, account.DeviceAccount, orchestrationID, botIf.Instance()); err != nil {
+					// Checkout failed - return to pool and error
+					accountPool.Return(account)
+					return fmt.Errorf("failed to checkout account in database: %w", err)
+				}
+				fmt.Printf("Bot %d: Checked out account '%s' to orchestration %s, instance %d\n",
+					botIf.Instance(), account.DeviceAccount, orchestrationID, botIf.Instance())
 			}
 
 			// Update account to track which bot is using it
@@ -83,7 +138,10 @@ func (a *InjectNextAccount) Build(ab *ActionBuilder) *ActionBuilder {
 
 			// Inject the account
 			if err := botIf.InjectAccount(account); err != nil {
-				// Return account to pool on injection failure
+				// Injection failed - release checkout and return to pool
+				if db != nil {
+					database.ReleaseAccount(db, account.DeviceAccount, orchestrationID)
+				}
 				accountPool.Return(account)
 				return fmt.Errorf("failed to inject account: %w", err)
 			}
@@ -211,6 +269,19 @@ func (a *CompleteAccount) Build(ab *ActionBuilder) *ActionBuilder {
 				return fmt.Errorf("failed to mark account complete: %w", err)
 			}
 
+			// Release account checkout in database
+			if dbProvider, ok := managerIf.(interface{ Database() *sql.DB }); ok {
+				if db := dbProvider.Database(); db != nil && account.DeviceAccount != "" {
+					orchestrationID := botIf.OrchestrationID()
+					if err := database.ReleaseAccount(db, account.DeviceAccount, orchestrationID); err != nil {
+						fmt.Printf("Bot %d: Warning - failed to release account checkout: %v\n", botIf.Instance(), err)
+					} else {
+						fmt.Printf("Bot %d: Released account '%s' checkout from orchestration %s\n",
+							botIf.Instance(), account.DeviceAccount, orchestrationID)
+					}
+				}
+			}
+
 			// Clear current account from bot
 			botIf.ClearCurrentAccount()
 
@@ -290,6 +361,19 @@ func (a *ReturnAccount) Build(ab *ActionBuilder) *ActionBuilder {
 			// Return account to pool
 			if err := accountPool.Return(account); err != nil {
 				return fmt.Errorf("failed to return account: %w", err)
+			}
+
+			// Release account checkout in database
+			if dbProvider, ok := managerIf.(interface{ Database() *sql.DB }); ok {
+				if db := dbProvider.Database(); db != nil && account.DeviceAccount != "" {
+					orchestrationID := botIf.OrchestrationID()
+					if err := database.ReleaseAccount(db, account.DeviceAccount, orchestrationID); err != nil {
+						fmt.Printf("Bot %d: Warning - failed to release account checkout: %v\n", botIf.Instance(), err)
+					} else {
+						fmt.Printf("Bot %d: Released account '%s' checkout from orchestration %s\n",
+							botIf.Instance(), account.DeviceAccount, orchestrationID)
+					}
+				}
 			}
 
 			// Clear current account from bot
@@ -376,6 +460,19 @@ func (a *MarkAccountFailed) Build(ab *ActionBuilder) *ActionBuilder {
 			// Mark account as failed
 			if err := accountPool.MarkFailed(account, a.Reason); err != nil {
 				return fmt.Errorf("failed to mark account as failed: %w", err)
+			}
+
+			// Release account checkout in database
+			if dbProvider, ok := managerIf.(interface{ Database() *sql.DB }); ok {
+				if db := dbProvider.Database(); db != nil && account.DeviceAccount != "" {
+					orchestrationID := botIf.OrchestrationID()
+					if err := database.ReleaseAccount(db, account.DeviceAccount, orchestrationID); err != nil {
+						fmt.Printf("Bot %d: Warning - failed to release account checkout: %v\n", botIf.Instance(), err)
+					} else {
+						fmt.Printf("Bot %d: Released account '%s' checkout from orchestration %s\n",
+							botIf.Instance(), account.DeviceAccount, orchestrationID)
+					}
+				}
 			}
 
 			// Clear current account from bot

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"jordanella.com/pocket-tcg-go/internal/database"
 )
 
 // LaunchResult contains the results of a group launch
@@ -309,6 +311,16 @@ func (o *Orchestrator) StopGroup(groupName string) error {
 
 	// Shutdown all bots via manager
 	group.Manager.ShutdownAll()
+
+	// Release all account checkouts for this orchestration
+	if db := group.Manager.Database(); db != nil && group.OrchestrationID != "" {
+		released, err := database.ReleaseAllAccountsForOrchestration(db, group.OrchestrationID)
+		if err != nil {
+			fmt.Printf("Warning: Failed to release accounts for orchestration %s: %v\n", group.OrchestrationID, err)
+		} else if released > 0 {
+			fmt.Printf("Released %d account checkout(s) for orchestration %s\n", released, group.OrchestrationID)
+		}
+	}
 
 	// Release all instances
 	o.releaseAllInstances(groupName)

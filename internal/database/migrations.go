@@ -70,6 +70,18 @@ var migrations = []Migration{
 		Up:          migration009Up,
 		Down:        migration009Down,
 	},
+	{
+		Version:     10,
+		Description: "Add orchestration_id to routine_executions for multi-group isolation",
+		Up:          migration010Up,
+		Down:        migration010Down,
+	},
+	{
+		Version:     11,
+		Description: "Add checkout tracking to accounts table for mutex control",
+		Up:          migration011Up,
+		Down:        migration011Down,
+	},
 }
 
 // RunMigrations runs all pending database migrations
@@ -625,6 +637,70 @@ func migration009Down(tx *sql.Tx) error {
 		DROP INDEX IF EXISTS idx_routine_exec_status;
 		DROP INDEX IF EXISTS idx_routine_exec_account_routine;
 		DROP TABLE IF EXISTS routine_executions;
+	`)
+	return err
+}
+
+// Migration 010: Add orchestration_id for multi-group isolation
+func migration010Up(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		-- Add orchestration_id to track distinct bot group executions
+		ALTER TABLE routine_executions ADD COLUMN orchestration_id TEXT;
+
+		-- Create index for filtering by orchestration context
+		CREATE INDEX idx_routine_exec_orchestration ON routine_executions(orchestration_id);
+
+		-- Composite index for pool queries scoped to specific orchestration
+		-- e.g., "accounts that completed routine X in orchestration Y"
+		CREATE INDEX idx_routine_exec_orchestration_lookup ON routine_executions(
+			orchestration_id,
+			routine_name,
+			execution_status,
+			completed_at
+		);
+	`)
+	return err
+}
+
+func migration010Down(tx *sql.Tx) error {
+	// Note: SQLite doesn't support DROP COLUMN, so we'd need to recreate the table
+	// For now, just drop the indexes
+	_, err := tx.Exec(`
+		DROP INDEX IF EXISTS idx_routine_exec_orchestration_lookup;
+		DROP INDEX IF EXISTS idx_routine_exec_orchestration;
+	`)
+	return err
+}
+
+// Migration 011: Add checkout tracking to accounts table
+func migration011Up(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		-- Add checkout/injection tracking columns
+		-- These form the SOURCE OF TRUTH for which bot is using which account
+		ALTER TABLE accounts ADD COLUMN checked_out_to_instance INTEGER;
+		ALTER TABLE accounts ADD COLUMN checked_out_to_orchestration TEXT;
+		ALTER TABLE accounts ADD COLUMN checked_out_at DATETIME;
+
+		-- Create indexes for efficient checkout queries
+		CREATE INDEX idx_accounts_checked_out_instance ON accounts(checked_out_to_instance);
+		CREATE INDEX idx_accounts_checked_out_orchestration ON accounts(checked_out_to_orchestration);
+
+		-- Composite index for "find accounts checked out by orchestration X"
+		CREATE INDEX idx_accounts_checkout_lookup ON accounts(
+			checked_out_to_orchestration,
+			checked_out_to_instance
+		) WHERE checked_out_to_orchestration IS NOT NULL;
+	`)
+	return err
+}
+
+func migration011Down(tx *sql.Tx) error {
+	// Note: SQLite doesn't support DROP COLUMN, so we'd need to recreate the table
+	// For now, just drop the indexes
+	_, err := tx.Exec(`
+		DROP INDEX IF EXISTS idx_accounts_checkout_lookup;
+		DROP INDEX IF EXISTS idx_accounts_checked_out_orchestration;
+		DROP INDEX IF EXISTS idx_accounts_checked_out_instance;
 	`)
 	return err
 }

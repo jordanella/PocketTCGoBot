@@ -161,21 +161,23 @@ func testSQLPoolFiltering(poolManager *accountpool.PoolManager, poolName string,
 		return
 	}
 
-	if poolDef.Type != "sql" {
-		fmt.Println("Skipping non-SQL pool\n")
+	// Skip if no queries defined
+	if poolDef.Config == nil || len(poolDef.Config.Queries) == 0 {
+		fmt.Println("Skipping pool with no queries\n")
 		return
 	}
 
-	queryDef := poolDef.Config.(*accountpool.QueryDefinition)
+	// Test first query
+	query := poolDef.Config.Queries[0]
 
 	// Build parameters
-	params := make([]interface{}, len(queryDef.Query.Parameters))
-	for i, p := range queryDef.Query.Parameters {
-		params[i] = p.Value
+	params := make([]interface{}, 0)
+	for _, val := range query.Parameters {
+		params = append(params, val)
 	}
 
 	// Execute query to see what we'd get
-	rows, err := db.Query(queryDef.Query.Select, params...)
+	rows, err := db.Query(query.SQL, params...)
 	if err != nil {
 		fmt.Printf("✗ Query failed: %v\n\n", err)
 		return

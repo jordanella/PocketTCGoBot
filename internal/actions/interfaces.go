@@ -41,6 +41,7 @@ type BotInterface interface {
 	IsPaused() bool
 	IsStopped() bool
 	Instance() int
+	OrchestrationID() string // UUID of the bot group this bot belongs to
 
 	// Account management
 	Manager() interface{} // Returns bot.ManagerInterface

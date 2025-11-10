@@ -24,6 +24,7 @@ type Manager struct {
 	routineRegistry  actions.RoutineRegistryInterface
 	accountPool      accountpool.AccountPool // Shared account pool (optional)
 	db               *sql.DB                 // Database connection for routine tracking (optional)
+	orchestrationID  string                  // UUID of the bot group this manager belongs to
 }
 
 // NewManager creates a new bot manager with shared registries
@@ -96,6 +97,11 @@ func (m *Manager) CreateBot(instance int) (*Bot, error) {
 	bot.templateRegistry = m.templateRegistry
 	bot.routineRegistry = m.routineRegistry
 	bot.manager = m // Set manager reference
+
+	// Set orchestration ID if manager has one
+	if m.orchestrationID != "" {
+		bot.SetOrchestrationID(m.orchestrationID)
+	}
 
 	// Initialize the bot (this will skip registry initialization since they're already set)
 	if err := bot.InitializeWithSharedRegistries(); err != nil {
@@ -201,7 +207,7 @@ func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy Re
 			fmt.Sscanf(deviceAccountStr, "%d", &accountID)
 
 			// Record routine start
-			executionID, err = database.StartRoutineExecution(db, accountID, routineName, instance)
+			executionID, err = database.StartRoutineExecution(db, accountID, routineName, bot.OrchestrationID(), instance)
 			if err != nil {
 				fmt.Printf("Bot %d: Warning - failed to start routine tracking: %v\n", instance, err)
 			} else {
@@ -284,7 +290,7 @@ func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy Re
 			if db != nil {
 				if deviceAccountStr, exists := bot.Variables().Get("device_account_id"); exists && deviceAccountStr != "" {
 					fmt.Sscanf(deviceAccountStr, "%d", &accountID)
-					executionID, err = database.StartRoutineExecution(db, accountID, routineName, instance)
+					executionID, err = database.StartRoutineExecution(db, accountID, routineName, bot.OrchestrationID(), instance)
 					if err != nil {
 						fmt.Printf("Bot %d: Warning - failed to start routine tracking: %v\n", instance, err)
 						executionID = 0
@@ -396,6 +402,21 @@ func (m *Manager) Database() *sql.DB {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.db
+}
+
+// SetOrchestrationID sets the UUID of the bot group this manager belongs to
+// This should be called before creating any bots
+func (m *Manager) SetOrchestrationID(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.orchestrationID = id
+}
+
+// OrchestrationID returns the UUID of the bot group this manager belongs to
+func (m *Manager) OrchestrationID() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.orchestrationID
 }
 
 // ReloadRoutines clears and reloads all routines from disk

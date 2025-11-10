@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"jordanella.com/pocket-tcg-go/internal/accountpool"
 	"jordanella.com/pocket-tcg-go/internal/actions"
 	"jordanella.com/pocket-tcg-go/internal/emulator"
@@ -40,7 +41,8 @@ type Orchestrator struct {
 // BotGroup represents a coordinated set of bots with shared configuration
 type BotGroup struct {
 	// Identity
-	Name string
+	Name            string
+	OrchestrationID string // UUID for this execution context
 
 	// Bot manager for this group
 	Manager *Manager
@@ -56,8 +58,9 @@ type BotGroup struct {
 	activeBotsMu       sync.RWMutex
 
 	// Account pool (optional - can be set by name or direct instance)
-	AccountPoolName string                      // Name of pool (resolved via PoolManager)
-	AccountPool     accountpool.AccountPool     // Direct pool instance (if not using named pool)
+	AccountPoolName   string                  // Name of pool definition (resolved via PoolManager)
+	AccountPool       accountpool.AccountPool // Execution-specific pool instance for this orchestration
+	InitialAccountCount int                   // Total accounts when pool first populated (for progress monitoring)
 
 	// Runtime state
 	running   bool
@@ -191,13 +194,18 @@ func (o *Orchestrator) CreateGroup(
 			requestedBotCount, len(availableInstances))
 	}
 
+	// Generate unique orchestration ID for this bot group execution
+	orchestrationID := uuid.New().String()
+
 	// Create manager for this group
 	manager := NewManagerWithRegistries(o.config, o.templateRegistry, o.routineRegistry)
+	manager.SetOrchestrationID(orchestrationID)
 
 	// Create group
 	ctx, cancel := context.WithCancel(context.Background())
 	group := &BotGroup{
 		Name:               name,
+		OrchestrationID:    orchestrationID,
 		Manager:            manager,
 		RoutineName:        routineName,
 		RoutineConfig:      routineConfig,
@@ -209,6 +217,8 @@ func (o *Orchestrator) CreateGroup(
 		ctx:                ctx,
 		cancelFunc:         cancel,
 	}
+
+	fmt.Printf("Created bot group '%s' with orchestration ID: %s\n", name, orchestrationID)
 
 	o.groups[name] = group
 	return group, nil
@@ -309,22 +319,31 @@ func (o *Orchestrator) GetPoolManager() *accountpool.PoolManager {
 }
 
 // SetGroupAccountPool sets a group's account pool by name (resolves via PoolManager)
+// This creates an execution-specific pool instance for this orchestration
 func (o *Orchestrator) SetGroupAccountPool(groupName, poolName string) error {
 	group, exists := o.GetGroup(groupName)
 	if !exists {
 		return fmt.Errorf("group '%s' not found", groupName)
 	}
 
-	// Resolve pool
+	// Resolve pool definition and create execution-specific instance
 	pool, err := o.resolveAccountPool(poolName)
 	if err != nil {
 		return fmt.Errorf("failed to resolve pool '%s': %w", poolName, err)
 	}
 
+	// Get initial account count for progress monitoring
+	stats := pool.GetStats()
+	initialCount := stats.Total
+
 	// Update group
 	group.AccountPoolName = poolName
 	group.AccountPool = pool
+	group.InitialAccountCount = initialCount
 	group.Manager.SetAccountPool(pool)
+
+	fmt.Printf("Bot Group '%s' (orchestration %s): Populated pool '%s' with %d accounts\n",
+		group.Name, group.OrchestrationID, poolName, initialCount)
 
 	return nil
 }
@@ -359,4 +378,23 @@ func (o *Orchestrator) RefreshGroupAccountPool(groupName string) error {
 	}
 
 	return group.AccountPool.Refresh()
+}
+
+// GetGroupAccountProgress returns progress information for account processing
+func (o *Orchestrator) GetGroupAccountProgress(groupName string) (processed int, total int, err error) {
+	group, exists := o.GetGroup(groupName)
+	if !exists {
+		return 0, 0, fmt.Errorf("group '%s' not found", groupName)
+	}
+
+	if group.AccountPool == nil {
+		return 0, 0, fmt.Errorf("group '%s' has no account pool configured", groupName)
+	}
+
+	stats := group.AccountPool.GetStats()
+	remaining := stats.Available
+	total = group.InitialAccountCount
+	processed = total - remaining
+
+	return processed, total, nil
 }

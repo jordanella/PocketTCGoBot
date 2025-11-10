@@ -78,16 +78,16 @@ type Bot struct {
 	routineController *RoutineController
 	variableStore     actions.VariableStoreInterface
 	sentryManager     *actions.SentryManager // Global sentry lifecycle manager
-	lastRoutineName   string                 // Track last executed routine for restart
+	orchestrationID   string
+	lastRoutineName   string // Track last executed routine for restart
 	restartPolicy     *RestartPolicy
-	recoveryConfig    RecoveryConfig     // Recovery behavior configuration
-	recoveryAttempts  map[string]int     // Track recovery attempts per issue type
-	onUnhealthyAction func()              // Callback when unhealthy event occurs
-	manager           *Manager            // Reference to parent manager (optional)
+	recoveryConfig    RecoveryConfig       // Recovery behavior configuration
+	recoveryAttempts  map[string]int       // Track recovery attempts per issue type
+	onUnhealthyAction func()               // Callback when unhealthy event occurs
+	manager           *Manager             // Reference to parent manager (optional)
 	currentAccount    *accountpool.Account // Currently assigned account (nil if none)
 	ctx               context.Context
 	cancel            context.CancelFunc
-	// ... flags
 }
 
 // Lifecycle methods
@@ -656,4 +656,13 @@ func (b *Bot) executeRecoveryAction(reason string, err error) {
 	default:
 		fmt.Printf("Bot %d: Unknown recovery action '%s'\n", b.instance, action)
 	}
+}
+
+func (b *Bot) OrchestrationID() string {
+	return b.orchestrationID
+}
+
+// SetOrchestrationID sets the UUID of the bot group this bot belongs to
+func (b *Bot) SetOrchestrationID(id string) {
+	b.orchestrationID = id
 }
