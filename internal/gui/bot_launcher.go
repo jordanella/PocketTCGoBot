@@ -176,12 +176,12 @@ func (t *BotLauncherTab) initializeManager() {
 		return
 	}
 
-	var err error
-	t.manager, err = bot.NewManager(t.controller.config)
-	if err != nil {
-		// Log error but continue - this is for pre-initialization
-		fmt.Printf("Warning: Failed to create manager during initialization: %v\n", err)
-	}
+	// Create manager with Controller's shared registries (MVC: injecting Model into Manager)
+	t.manager = bot.NewManagerWithRegistries(
+		t.controller.config,
+		t.controller.GetTemplateRegistry(),
+		t.controller.GetRoutineRegistry(),
+	)
 }
 
 // loadAvailableRoutines loads available routines from the shared registry
@@ -461,13 +461,12 @@ func (t *BotLauncherTab) launchAllBots() {
 
 	// Ensure manager is initialized (should already be done in Build())
 	if t.manager == nil {
-		var err error
-		t.manager, err = bot.NewManager(config)
-		if err != nil {
-			t.statusLabel.SetText(fmt.Sprintf("Error: Failed to create manager: %v", err))
-			dialog.ShowError(err, t.controller.window)
-			return
-		}
+		// Create manager with Controller's shared registries (MVC: injecting Model into Manager)
+		t.manager = bot.NewManagerWithRegistries(
+			config,
+			t.controller.GetTemplateRegistry(),
+			t.controller.GetRoutineRegistry(),
+		)
 	}
 
 	// Create coordinator for account injection

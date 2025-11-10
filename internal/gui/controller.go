@@ -10,9 +10,11 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 	"jordanella.com/pocket-tcg-go/internal/accountpool"
+	"jordanella.com/pocket-tcg-go/internal/actions"
 	"jordanella.com/pocket-tcg-go/internal/bot"
 	"jordanella.com/pocket-tcg-go/internal/database"
 	"jordanella.com/pocket-tcg-go/internal/emulator"
+	"jordanella.com/pocket-tcg-go/pkg/templates"
 )
 
 // Controller manages the GUI state and bot instances
@@ -41,6 +43,10 @@ type Controller struct {
 	botLauncherTab    *BotLauncherTab
 	managerGroupsTab  *ManagerGroupsTab
 	accountPoolsTab   *AccountPoolsTab
+
+	// Business logic - Registries (MVC: Model layer)
+	templateRegistry *templates.TemplateRegistry
+	routineRegistry  *actions.RoutineRegistry
 
 	// Database tabs
 	db              *database.DB
@@ -78,8 +84,12 @@ func NewController(cfg *bot.Config, app fyne.App, window fyne.Window) *Controlle
 	// Start event bus with app reference for main thread dispatch
 	ctrl.eventBus.Start(app)
 
-	// Initialize tabs (log tab must be first for database init logging)
+	// Initialize tabs (log tab must be first for registry and database init logging)
 	ctrl.logTab = NewLogTab(ctrl)
+
+	// Initialize business logic registries (MVC: Model layer)
+	ctrl.initializeRegistries()
+
 	ctrl.dashboard = NewDashboardTab(ctrl)
 	ctrl.configTab = NewConfigTab(ctrl)
 	ctrl.accountTab = NewAccountTab(ctrl)
@@ -87,13 +97,13 @@ func NewController(cfg *bot.Config, app fyne.App, window fyne.Window) *Controlle
 	ctrl.controlTab = NewControlTab(ctrl)
 	ctrl.adbTestTab = NewADBTestTab(ctrl)
 
-	// Initialize manager for routines tab (shared with bot launcher)
-	manager, err := bot.NewManager(cfg)
-	if err != nil {
-		// Log error but continue - tab will handle nil manager gracefully
-		ctrl.logTab.AddLog(LogLevelWarn, 0, fmt.Sprintf("Failed to create manager for routines tab: %v", err))
-		manager = nil
-	}
+	// Create manager with shared registries (MVC: injecting Model into Manager)
+	// This manager is used by routinesTab for routine execution
+	manager := bot.NewManagerWithRegistries(
+		cfg,
+		ctrl.templateRegistry,
+		ctrl.routineRegistry,
+	)
 
 	ctrl.routinesTab = NewRoutinesEnhancedTab(ctrl, manager)
 	ctrl.botLauncherTab = NewBotLauncherTab(ctrl)
@@ -109,6 +119,39 @@ func NewController(cfg *bot.Config, app fyne.App, window fyne.Window) *Controlle
 	ctrl.RefreshMuMuInstances()
 
 	return ctrl
+}
+
+// initializeRegistries loads template and routine registries at startup (MVC: Model layer)
+func (c *Controller) initializeRegistries() {
+	// Load templates
+	templatesPath := filepath.Join(".", "templates")
+	c.templateRegistry = templates.NewTemplateRegistry(templatesPath)
+	if err := c.templateRegistry.LoadFromDirectory(filepath.Join(templatesPath, "registry")); err != nil {
+		if c.logTab != nil {
+			c.logTab.AddLog(LogLevelWarn, 0, fmt.Sprintf("Failed to load template registry: %v", err))
+		}
+	} else {
+		if c.logTab != nil {
+			c.logTab.AddLog(LogLevelInfo, 0, "Template registry loaded from "+templatesPath)
+		}
+	}
+
+	// Load routines
+	routinesPath := filepath.Join(".", "routines")
+	c.routineRegistry = actions.NewRoutineRegistry(routinesPath).WithTemplateRegistry(c.templateRegistry)
+	if c.logTab != nil {
+		c.logTab.AddLog(LogLevelInfo, 0, "Routine registry loaded from "+routinesPath)
+	}
+}
+
+// GetTemplateRegistry returns the global template registry (MVC: Model layer)
+func (c *Controller) GetTemplateRegistry() *templates.TemplateRegistry {
+	return c.templateRegistry
+}
+
+// GetRoutineRegistry returns the global routine registry (MVC: Model layer)
+func (c *Controller) GetRoutineRegistry() *actions.RoutineRegistry {
+	return c.routineRegistry
 }
 
 // initializeDatabase initializes the database and database tabs
@@ -161,11 +204,6 @@ func (c *Controller) initializeDatabase() {
 		poolsDir := "pools"
 		c.poolManager = accountpool.NewPoolManager(poolsDir, c.db.Conn())
 		c.accountPoolsTab = NewAccountPoolsTab(c, c.poolManager, c.db.Conn())
-
-		// Update Manager Groups tab with pool manager
-		if c.managerGroupsTab != nil {
-			c.managerGroupsTab.poolManager = c.poolManager
-		}
 	} else {
 		// Database not available - pools tab will not be functional
 		c.poolManager = nil

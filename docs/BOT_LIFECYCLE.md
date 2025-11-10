@@ -4,17 +4,56 @@ This document describes the complete lifecycle of bot initialization, execution,
 
 ## Table of Contents
 
-1. [Program Startup](#program-startup)
-2. [Registry Initialization](#registry-initialization)
-3. [Bot Group Creation](#bot-group-creation)
-4. [Bot Instance Launch](#bot-instance-launch)
-5. [Routine Execution](#routine-execution)
-6. [Routine Restart Loop](#routine-restart-loop)
-7. [Shutdown](#shutdown)
+1. [MVC Architecture](#mvc-architecture)
+2. [Program Startup](#program-startup)
+3. [Registry Initialization](#registry-initialization)
+4. [Bot Group Creation](#bot-group-creation)
+5. [Bot Instance Launch](#bot-instance-launch)
+6. [Routine Execution](#routine-execution)
+7. [Routine Restart Loop](#routine-restart-loop)
+8. [Shutdown](#shutdown)
 
 ---
 
-## 1. Program Startup
+## 1. MVC Architecture
+
+The application follows **Model-View-Controller (MVC)** architecture to separate concerns:
+
+### Model Layer (Business Logic)
+- **Location**: `internal/actions/`, `internal/bot/`, `internal/accountpool/`, `pkg/templates/`
+- **Components**:
+  - `TemplateRegistry` - Image template management
+  - `RoutineRegistry` - Bot routine management
+  - `PoolManager` - Account pool management
+  - `Bot` - Individual bot instance
+  - `Manager` - Bot instance manager
+
+### View Layer (GUI)
+- **Location**: `internal/gui/`
+- **Components**:
+  - GUI tabs (ManagerGroupsTab, BotLauncherTab, etc.)
+  - UI widgets and layouts
+  - **Does NOT** contain business logic
+  - **Does NOT** own registries or managers
+
+### Controller Layer
+- **Location**: `internal/gui/controller.go`
+- **Components**:
+  - `Controller` - Main application controller
+  - **Owns** all registries (Template, Routine, Pool)
+  - **Initializes** registries at startup
+  - **Injects** registries into managers and tabs
+  - Coordinates communication between View and Model
+
+### Key Principles
+1. **Registries are initialized in Controller** at application startup, NOT in GUI tabs
+2. **GUI tabs access registries through Controller** using `controller.GetTemplateRegistry()` and `controller.GetRoutineRegistry()`
+3. **Managers receive registries via dependency injection** using `bot.NewManagerWithRegistries()`
+4. **No lazy loading in GUI tabs** - all business logic is initialized upfront
+
+---
+
+## 2. Program Startup
 
 **Entry Point**: `cmd/bot-gui/main.go`
 
@@ -49,29 +88,41 @@ func main() {
 
 ---
 
-## 2. Registry Initialization
+## 3. Registry Initialization
 
-**Location**: `internal/gui/manager_groups.go` - `initializeGlobalRegistries()`
+**Location**: `internal/gui/controller.go` - `initializeRegistries()`
 
-When the Manager Groups tab is opened, global registries are initialized **once** and shared across all bot groups:
+**MVC Architecture**: Registries are part of the **Model** layer and are initialized in the Controller at application startup, **not** in GUI tabs. This ensures proper separation of concerns.
+
+Registries are initialized immediately after the log tab is created in `NewController()`:
 
 ```go
-func (t *ManagerGroupsTab) initializeGlobalRegistries() {
+func (c *Controller) initializeRegistries() {
     // Load templates
     templatesPath := "./templates"
-    t.templateRegistry = templates.NewTemplateRegistry(templatesPath)
-    t.templateRegistry.LoadFromDirectory("./templates/registry")
+    c.templateRegistry = templates.NewTemplateRegistry(templatesPath)
+    c.templateRegistry.LoadFromDirectory("./templates/registry")
 
     // Load routines
     routinesPath := "./routines"
-    t.routineRegistry = actions.NewRoutineRegistry(routinesPath)
-        .WithTemplateRegistry(t.templateRegistry)
+    c.routineRegistry = actions.NewRoutineRegistry(routinesPath)
+        .WithTemplateRegistry(c.templateRegistry)
 
-    // Initialize pool manager (if database available)
-    t.poolManager = accountpool.NewPoolManager(db)
-    t.poolManager.LoadAllPools()
+    // Log initialization
+    c.logTab.AddLog(LogLevelInfo, 0, "Template registry loaded from "+templatesPath)
+    c.logTab.AddLog(LogLevelInfo, 0, "Routine registry loaded from "+routinesPath)
 }
 ```
+
+**Registry Access**:
+GUI tabs and managers access registries through Controller accessor methods:
+- `controller.GetTemplateRegistry()` - Returns shared template registry
+- `controller.GetRoutineRegistry()` - Returns shared routine registry
+
+**Pool Manager**:
+- **Location**: `c.poolManager` in Controller
+- **Initialized**: During `initializeDatabase()` if database is available
+- **Access**: GUI tabs access via `controller.poolManager`
 
 **What Gets Loaded**:
 
@@ -100,7 +151,7 @@ func (t *ManagerGroupsTab) initializeGlobalRegistries() {
 
 ---
 
-## 3. Bot Group Creation
+## 4. Bot Group Creation
 
 **Location**: `internal/gui/manager_groups.go` - `showCreateGroupDialog()`
 
@@ -118,16 +169,17 @@ Group Configuration:
 
 ```go
 func (t *ManagerGroupsTab) createGroup(...) {
-    // Create manager with shared registries
+    // Create manager with Controller's shared registries (MVC: Model injection)
     manager := bot.NewManagerWithRegistries(
         config,
-        t.templateRegistry,  // Shared
-        t.routineRegistry,   // Shared
+        t.controller.GetTemplateRegistry(),  // From Controller
+        t.controller.GetRoutineRegistry(),   // From Controller
     )
 
     // Set account pool if specified
     if poolName != "" {
-        pool := t.poolManager.GetPool(poolName)
+        poolManager := t.controller.poolManager  // From Controller
+        pool := poolManager.GetPool(poolName)
         manager.SetAccountPool(pool)
     }
 
@@ -157,7 +209,7 @@ func (t *ManagerGroupsTab) createGroup(...) {
 
 ---
 
-## 4. Bot Instance Launch
+## 5. Bot Instance Launch
 
 **Location**: `internal/gui/manager_groups.go` - `startGroup()`
 
@@ -224,7 +276,7 @@ func (m *Manager) CreateBot(instance int) (*Bot, error) {
 
 ---
 
-## 5. Routine Execution
+## 6. Routine Execution
 
 **Location**: `internal/bot/manager.go` - `ExecuteWithRestart()`
 
@@ -393,7 +445,7 @@ func (ab *ActionBuilder) executeSteps(ctx context.Context, bot BotInterface) err
 
 ---
 
-## 6. Routine Restart Loop
+## 7. Routine Restart Loop
 
 **Location**: `internal/bot/manager.go` - `ExecuteWithRestart()` (continued)
 
@@ -496,7 +548,7 @@ The infinite loop can be stopped in three ways:
 
 ---
 
-## 7. Shutdown
+## 8. Shutdown
 
 ### Graceful Shutdown Process
 

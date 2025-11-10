@@ -220,22 +220,12 @@ func (t *RoutinesTab) buildSelectedRoutine() {
 	t.statusLabel.SetText(fmt.Sprintf("Building routine: %s...", selectedFile))
 	t.safeLog(LogLevelInfo, 0, fmt.Sprintf("Building routine from: %s", routinePath))
 
-	// Create template registry (needed for validation)
-	templateRegistry := templates.NewTemplateRegistry("templates/images")
-
-	// Try to load from templates/registry folder first (recommended structure)
-	registryPath := filepath.Join("templates", "registry")
-	if _, err := os.Stat(registryPath); err == nil {
-		if err := templateRegistry.LoadFromDirectory(registryPath); err != nil {
-			t.safeLog(LogLevelWarn, 0, fmt.Sprintf("Failed to load templates from registry folder: %v", err))
-		} else {
-			t.safeLog(LogLevelInfo, 0, "Loaded templates from templates/registry")
-		}
-	}
-
-	// Also load any templates from the root templates directory
-	if err := templateRegistry.LoadFromDirectory("templates"); err != nil {
-		t.safeLog(LogLevelWarn, 0, fmt.Sprintf("Failed to load templates from templates folder: %v", err))
+	// Get template registry from Controller (MVC: using Model layer)
+	templateRegistry := t.controller.GetTemplateRegistry()
+	if templateRegistry == nil {
+		t.statusLabel.SetText("❌ Template registry not available")
+		t.safeLog(LogLevelError, 0, "Template registry not initialized")
+		return
 	}
 
 	// Create routine loader

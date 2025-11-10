@@ -16,19 +16,12 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"jordanella.com/pocket-tcg-go/internal/accountpool"
-	"jordanella.com/pocket-tcg-go/internal/actions"
 	"jordanella.com/pocket-tcg-go/internal/bot"
-	"jordanella.com/pocket-tcg-go/pkg/templates"
 )
 
 // ManagerGroupsTab allows creating and managing multiple bot manager groups
 type ManagerGroupsTab struct {
 	controller *Controller
-
-	// Global registries (loaded once, shared by all managers)
-	templateRegistry *templates.TemplateRegistry
-	routineRegistry  *actions.RoutineRegistry
-	poolManager      *accountpool.PoolManager
 
 	// Manager groups
 	groups   map[string]*ManagerGroup
@@ -40,7 +33,7 @@ type ManagerGroupsTab struct {
 	refreshBtn      *widget.Button
 	statusLabel     *widget.Label
 
-	// Available routines for dropdown
+	// Available routines for dropdown (cached from registry)
 	availableRoutines []string
 	displayToFilename map[string]string
 }
@@ -79,8 +72,8 @@ func NewManagerGroupsTab(ctrl *Controller) *ManagerGroupsTab {
 
 // Build constructs the UI
 func (t *ManagerGroupsTab) Build() fyne.CanvasObject {
-	// Initialize global registries
-	t.initializeGlobalRegistries()
+	// Load available routines from Controller's registry
+	t.loadAvailableRoutines()
 
 	// Header
 	header := widget.NewLabelWithStyle("Manager Groups", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
@@ -127,38 +120,19 @@ func (t *ManagerGroupsTab) Build() fyne.CanvasObject {
 	return content
 }
 
-// initializeGlobalRegistries loads templates and routines once for all managers
-func (t *ManagerGroupsTab) initializeGlobalRegistries() {
-	// Load templates
-	templatesPath := filepath.Join(".", "templates")
-	t.templateRegistry = templates.NewTemplateRegistry(templatesPath)
-	if err := t.templateRegistry.LoadFromDirectory(filepath.Join(templatesPath, "registry")); err != nil {
-		t.controller.logTab.AddLog(LogLevelWarn, 0, fmt.Sprintf("Manager Groups: Failed to load templates: %v", err))
-	} else {
-		t.controller.logTab.AddLog(LogLevelInfo, 0, "Manager Groups: Loaded global template registry from "+templatesPath)
-	}
-
-	// Load routines
-	routinesPath := filepath.Join(".", "routines")
-	t.routineRegistry = actions.NewRoutineRegistry(routinesPath).WithTemplateRegistry(t.templateRegistry)
-	t.controller.logTab.AddLog(LogLevelInfo, 0, "Manager Groups: Loaded global routine registry from "+routinesPath)
-
-	// Load available routines for dropdown
-	t.loadAvailableRoutines()
-}
-
-// loadAvailableRoutines gets list of available routines
+// loadAvailableRoutines gets list of available routines from Controller's registry
 func (t *ManagerGroupsTab) loadAvailableRoutines() {
-	if t.routineRegistry == nil {
+	routineRegistry := t.controller.GetRoutineRegistry()
+	if routineRegistry == nil {
 		return
 	}
 
-	t.availableRoutines = t.routineRegistry.ListAvailable()
+	t.availableRoutines = routineRegistry.ListAvailable()
 	t.displayToFilename = make(map[string]string)
 
 	for _, filename := range t.availableRoutines {
 		// Get metadata for display name
-		metadata := t.routineRegistry.GetMetadata(filename)
+		metadata := routineRegistry.GetMetadata(filename)
 		if metadata != nil {
 			if m, ok := metadata.(map[string]interface{}); ok {
 				if name, ok := m["name"].(string); ok {
@@ -199,9 +173,11 @@ func (t *ManagerGroupsTab) showCreateGroupDialog() {
 	poolOptions = append(poolOptions, "(None - No Account Pool)")
 	poolOptions = append(poolOptions, "(Legacy - File Browser)")
 
-	if t.poolManager != nil {
-		if err := t.poolManager.DiscoverPools(); err == nil {
-			pools := t.poolManager.ListPools()
+	// Get poolManager from Controller
+	poolManager := t.controller.poolManager
+	if poolManager != nil {
+		if err := poolManager.DiscoverPools(); err == nil {
+			pools := poolManager.ListPools()
 			for _, poolName := range pools {
 				poolOptions = append(poolOptions, poolName)
 			}
@@ -359,11 +335,11 @@ func (t *ManagerGroupsTab) createGroup(
 		return fmt.Errorf("invalid instance IDs: %w", err)
 	}
 
-	// Create manager with global registries
+	// Create manager with Controller's registries (MVC: injecting Model into Manager)
 	manager := bot.NewManagerWithRegistries(
 		t.controller.config,
-		t.templateRegistry,
-		t.routineRegistry,
+		t.controller.GetTemplateRegistry(),
+		t.controller.GetRoutineRegistry(),
 	)
 
 	// Create account pool based on selection
@@ -403,12 +379,13 @@ func (t *ManagerGroupsTab) createGroup(
 				return fmt.Errorf("failed to create file account pool: %w", err)
 			}
 		} else {
-			// Pool from PoolManager
-			if t.poolManager == nil {
+			// Pool from PoolManager (get from Controller)
+			poolManager := t.controller.poolManager
+			if poolManager == nil {
 				return fmt.Errorf("pool manager not available (database not initialized)")
 			}
 
-			pool, err = t.poolManager.GetPool(poolSelection)
+			pool, err = poolManager.GetPool(poolSelection)
 			if err != nil {
 				return fmt.Errorf("failed to get pool '%s': %w", poolSelection, err)
 			}
@@ -669,9 +646,11 @@ func (t *ManagerGroupsTab) editGroup(group *ManagerGroup) {
 	poolOptions = append(poolOptions, "(None - No Account Pool)")
 	poolOptions = append(poolOptions, "(Legacy - File Browser)")
 
-	if t.poolManager != nil {
-		if err := t.poolManager.DiscoverPools(); err == nil {
-			pools := t.poolManager.ListPools()
+	// Get poolManager from Controller
+	poolManager := t.controller.poolManager
+	if poolManager != nil {
+		if err := poolManager.DiscoverPools(); err == nil {
+			pools := poolManager.ListPools()
 			for _, poolName := range pools {
 				poolOptions = append(poolOptions, poolName)
 			}
@@ -834,11 +813,11 @@ func (t *ManagerGroupsTab) updateGroup(
 		return fmt.Errorf("invalid instance IDs: %w", err)
 	}
 
-	// Create new manager with global registries
+	// Create new manager with Controller's registries (MVC: injecting Model into Manager)
 	newManager := bot.NewManagerWithRegistries(
 		t.controller.config,
-		t.templateRegistry,
-		t.routineRegistry,
+		t.controller.GetTemplateRegistry(),
+		t.controller.GetRoutineRegistry(),
 	)
 
 	// Create account pool based on selection
@@ -878,12 +857,13 @@ func (t *ManagerGroupsTab) updateGroup(
 				return fmt.Errorf("failed to create file account pool: %w", err)
 			}
 		} else {
-			// Pool from PoolManager
-			if t.poolManager == nil {
+			// Pool from PoolManager (get from Controller)
+			poolManager := t.controller.poolManager
+			if poolManager == nil {
 				return fmt.Errorf("pool manager not available (database not initialized)")
 			}
 
-			pool, err = t.poolManager.GetPool(poolSelection)
+			pool, err = poolManager.GetPool(poolSelection)
 			if err != nil {
 				return fmt.Errorf("failed to get pool '%s': %w", poolSelection, err)
 			}
@@ -925,7 +905,9 @@ func (t *ManagerGroupsTab) refreshGroupPool(group *ManagerGroup) {
 		return
 	}
 
-	if t.poolManager == nil {
+	// Get poolManager from Controller
+	poolManager := t.controller.poolManager
+	if poolManager == nil {
 		dialog.ShowError(fmt.Errorf("pool manager not available"), t.controller.window)
 		return
 	}
@@ -939,13 +921,13 @@ func (t *ManagerGroupsTab) refreshGroupPool(group *ManagerGroup) {
 			}
 
 			// Refresh the pool
-			if err := t.poolManager.RefreshPool(group.PoolName); err != nil {
+			if err := poolManager.RefreshPool(group.PoolName); err != nil {
 				dialog.ShowError(fmt.Errorf("failed to refresh pool: %w", err), t.controller.window)
 				return
 			}
 
 			// Get updated pool instance
-			pool, err := t.poolManager.GetPool(group.PoolName)
+			pool, err := poolManager.GetPool(group.PoolName)
 			if err != nil {
 				dialog.ShowError(fmt.Errorf("failed to get refreshed pool: %w", err), t.controller.window)
 				return
