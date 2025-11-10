@@ -8,10 +8,7 @@
 *.dylib
 
 # Compiled binaries (in bin/ directory only)
-/bin/pocket-bot
-/bin/pocket-bot-gui
-/bin/bot
-/bin/bot-gui
+/bin/pocket-bot.exe
 /bin/*.exe
 
 # Test binaries

@@ -208,30 +208,29 @@ func (o *Orchestrator) waitForEmulatorReady(instanceID int, timeout time.Duratio
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			// Check timeout
-			if time.Since(startTime) > timeout {
-				return fmt.Errorf("timeout waiting for emulator instance %d to be ready", instanceID)
-			}
+	for range ticker.C {
+		// Check timeout
+		if time.Since(startTime) > timeout {
+			return fmt.Errorf("timeout waiting for emulator instance %d to be ready", instanceID)
+		}
 
-			// Check if window handle exists
-			if instance.MuMu == nil || instance.MuMu.WindowHandle == 0 {
-				continue
-			}
+		// Check if window handle exists
+		if instance.MuMu == nil || instance.MuMu.WindowHandle == 0 {
+			continue
+		}
 
-			// Check if ADB is responsive
-			adb := instance.ADB
-			if adb == nil {
-				continue
-			}
+		// Check if ADB is responsive
+		adb := instance.ADB
+		if adb == nil {
+			continue
+		}
 
-			// Try a simple ADB command
-			if err := adb.Connect(); err == nil {
-				// Emulator is ready
-				return nil
-			}
+		// Try a simple ADB command
+		if err := adb.Connect(); err == nil {
+			// Emulator is ready
+			return nil
 		}
 	}
+
+	return fmt.Errorf("emulator instance %d never became ready", instanceID)
 }

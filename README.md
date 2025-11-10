@@ -26,9 +26,9 @@ PocketTCG Bot automates Pokemon TCG Pocket gameplay across multiple MuMu Player 
 
 - **No Runtime Dependencies** - Single executable, no Python environment or package management
 - **Native Performance** - Faster and more reliable than scripting languages
-- **Cross-Platform** - Works on Windows, Linux, and macOS without modification
+- **Windows-Native** - Built specifically for Windows with MuMu Player integration
 - **Pure Go CV** - No OpenCV or external CV libraries required
-- **Easy Deployment** - Distribute a single binary to users
+- **Easy Deployment** - Distribute a single .exe file to users
 
 ## Current Capabilities
 
@@ -80,10 +80,10 @@ PocketTCG Bot automates Pokemon TCG Pocket gameplay across multiple MuMu Player 
 
 ### Prerequisites
 
-- **MuMu Player** (Android emulator)
-- **Pokemon TCG Pocket** APK installed
+- **Windows 10/11** (required - Linux/macOS not supported)
+- **MuMu Player 12** (Android emulator)
+- **Pokemon TCG Pocket** APK installed in MuMu
 - **Go 1.23+** (for building from source)
-- **Windows** (primary platform, others untested)
 
 ### Installation
 
@@ -93,16 +93,17 @@ git clone <repository-url>
 cd PocketTCGoBot
 ```
 
-2. Build the GUI application:
+2. Build the application:
 ```bash
-go build -o pocket-bot-gui.exe ./cmd/bot-gui
+go build -o bin/pocket-bot.exe ./cmd/bot
 ```
 
 3. Configure `bin/Settings.ini` for your setup (see [Configuration](#configuration))
 
 4. Run the bot:
 ```bash
-./pocket-bot-gui.exe
+cd bin
+./pocket-bot.exe
 ```
 
 ### First Run
@@ -118,8 +119,7 @@ go build -o pocket-bot-gui.exe ./cmd/bot-gui
 ```
 PocketTCGoBot/
 ├── cmd/
-│   ├── bot-gui/              # GUI application (primary)
-│   ├── bot/                  # CLI version (deprecated)
+│   ├── bot/                  # Main GUI application
 │   ├── import_accounts/      # Account XML import tool
 │   ├── seed-database/        # Database seeding tool
 │   └── test_*/               # Testing utilities
@@ -140,12 +140,14 @@ PocketTCGoBot/
 │   └── discord/              # Discord integration (placeholder)
 ├── pkg/
 │   └── templates/            # Template registry and definitions
-├── bin/
-│   ├── accounts/             # Account XML files
-│   ├── templates/            # Template PNG images (236+)
-│   ├── routines/             # YAML routine definitions
-│   ├── pools/                # Account pool YAML definitions
-│   └── Settings.ini          # Configuration file
+├── bin/                      # Runtime directory (build and run from here)
+│   ├── templates/            # CV template PNG images (236+) + YAML definitions
+│   ├── routines/             # YAML routine definitions (committed)
+│   ├── pools/                # Account pool YAML definitions (committed)
+│   ├── accounts/             # Account XML files (gitignored)
+│   ├── *.db                  # SQLite databases (gitignored)
+│   ├── *.exe                 # Built executables (gitignored)
+│   └── Settings.ini          # Configuration file (gitignored, copy from example)
 ├── docs/
 │   ├── ARCHITECTURE.md       # Complete system architecture
 │   ├── ORCHESTRATION_ID_IMPLEMENTATION.md
@@ -188,17 +190,20 @@ See [docs/SETUP.md](docs/SETUP.md) for complete configuration guide.
 ### Building
 
 ```bash
-# Build GUI version
-go build -o pocket-bot-gui.exe ./cmd/bot-gui
+# Build to bin/ directory for testing
+go build -o bin/pocket-bot.exe ./cmd/bot
 
-# Build all internal packages
+# Build all internal packages (verification)
 go build ./internal/...
 
 # Run tests
 go test ./...
 
-# Database migrations (automatic on first run)
-# See internal/database/migrations.go
+# Run from bin/ directory (where assets are located)
+cd bin && ./pocket-bot.exe
+
+# Database migrations run automatically on first startup
+# See internal/database/migrations.go for migration history
 ```
 
 ### Creating YAML Routines
@@ -345,7 +350,6 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for complete system design.
 - OCR engine placeholder only
 - Discord webhooks placeholder only
 - Domain-specific routines minimal (infrastructure ready)
-- Windows-only testing (Linux/macOS untested but should work)
 
 ## Deprecating AHK Version
 
@@ -353,13 +357,13 @@ This Go implementation aims to fully replace the AutoHotkey version located in `
 
 | Feature | AHK | Go |
 |---------|-----|-----|
-| Dependencies | AHK runtime | None (standalone) |
-| Performance | Moderate | High |
+| Dependencies | AHK runtime | None (standalone .exe) |
+| Performance | Moderate | High (native code) |
 | Multi-instance | Limited | Native support |
 | Maintainability | Script-based | Compiled, typed |
 | Error Handling | Basic | Advanced patterns |
-| Cross-platform | Windows only | Windows/Linux/macOS |
-| CV Library | External | Pure Go |
+| Platform | Windows only | Windows only |
+| CV Library | External | Pure Go (no dependencies) |
 
 ## License
 

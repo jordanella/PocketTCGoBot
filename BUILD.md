@@ -2,22 +2,22 @@
 
 ## Quick Start
 
-### Building the GUI Application
+### Building the Application
 
 ```bash
 # Build to bin directory for testing with assets
-go build -o bin/bot-gui.exe ./cmd/bot-gui
+go build -o bin/pocket-bot.exe ./cmd/bot
 
 # Run from bin directory (where Settings.ini, templates, routines, pools are located)
 cd bin
-./bot-gui.exe
+./pocket-bot.exe
 ```
 
 ### Building for Release
 
 ```bash
 # Build optimized release binary
-go build -ldflags="-s -w" -o release/pocket-bot-gui.exe ./cmd/bot-gui
+go build -ldflags="-s -w" -o release/pocket-bot.exe ./cmd/bot
 
 # Note: Copy bin/ assets (templates, routines, pools, Settings.ini.example) to release directory
 ```
@@ -25,7 +25,7 @@ go build -ldflags="-s -w" -o release/pocket-bot-gui.exe ./cmd/bot-gui
 ## Project Structure
 
 ### Source Code
-- `cmd/bot-gui/` - Main GUI application entry point
+- `cmd/bot/` - Main application entry point
 - `internal/` - All internal packages (bot, actions, database, etc.)
 - `pkg/` - Public packages (templates registry)
 
@@ -44,9 +44,14 @@ go build -ldflags="-s -w" -o release/pocket-bot-gui.exe ./cmd/bot-gui
 ## Development Workflow
 
 1. **Edit source code** in `cmd/`, `internal/`, or `pkg/`
-2. **Build to bin/** for testing: `go build -o bin/bot-gui.exe ./cmd/bot-gui`
-3. **Run from bin/** to access templates/routines/pools: `cd bin && ./bot-gui.exe`
+2. **Build to bin/** for testing: `go build -o bin/pocket-bot.exe ./cmd/bot`
+3. **Run from bin/** to access templates/routines/pools: `cd bin && ./pocket-bot.exe`
 4. **Test with real assets** in the bin/ directory
+
+**Note**: The bin/ directory serves dual purpose:
+- Source assets (templates/, routines/, pools/) are committed to git
+- Runtime files (*.exe, *.db, accounts/) are gitignored
+- This keeps development workflow simple without needing to copy assets
 
 ## Asset Management
 
@@ -74,12 +79,12 @@ go build -ldflags="-s -w" -o release/pocket-bot-gui.exe ./cmd/bot-gui
 
 ### Standard Build
 ```bash
-go build -o bin/bot-gui.exe ./cmd/bot-gui
+go build -o bin/pocket-bot.exe ./cmd/bot
 ```
 
 ### Optimized Release Build
 ```bash
-go build -ldflags="-s -w" -o release/pocket-bot-gui.exe ./cmd/bot-gui
+go build -ldflags="-s -w" -o release/pocket-bot.exe ./cmd/bot
 ```
 
 Flags explanation:
@@ -87,18 +92,22 @@ Flags explanation:
 - `-w` - Omit DWARF debug information
 - Results in ~30-50% smaller binary
 
-### Cross-Platform Builds
+### Windows-Only Build
+
+This application is designed specifically for Windows with MuMu Player integration.
 
 ```bash
-# Windows (from any OS)
-GOOS=windows GOARCH=amd64 go build -o release/pocket-bot-gui.exe ./cmd/bot-gui
+# Build for Windows (64-bit)
+go build -o bin/pocket-bot.exe ./cmd/bot
 
-# Linux
-GOOS=linux GOARCH=amd64 go build -o release/pocket-bot-gui ./cmd/bot-gui
-
-# macOS
-GOOS=darwin GOARCH=amd64 go build -o release/pocket-bot-gui ./cmd/bot-gui
+# Optimized release build
+go build -ldflags="-s -w" -o release/pocket-bot.exe ./cmd/bot
 ```
+
+**Note**: Linux/macOS are not supported. The application relies on:
+- Windows-specific MuMu Player emulator paths
+- ADB integration with MuMu Player
+- Windows window management APIs
 
 ## Testing
 
