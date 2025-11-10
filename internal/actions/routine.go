@@ -21,16 +21,14 @@ type Routine struct {
 	Sentries    []Sentry      `yaml:"sentries,omitempty"`    // Sentry definitions for error handling
 }
 
-// StepMetadata holds timeout and retry configuration for a step
+// StepMetadata holds timeout configuration for a step
 type StepMetadata struct {
-	Timeout     time.Duration // Timeout for the step (0 = no timeout)
-	MaxAttempts int           // Maximum number of attempts (0 or 1 = no retries)
-	RetryDelay  time.Duration // Delay between retries (0 = use default)
+	Timeout time.Duration // Timeout for the step (0 = no timeout)
 }
 
 // HasMetadata returns true if any metadata is set
 func (sm StepMetadata) HasMetadata() bool {
-	return sm.Timeout > 0 || sm.MaxAttempts > 1 || sm.RetryDelay > 0
+	return sm.Timeout > 0
 }
 
 // ActionWithMetadata wraps an ActionStep with execution metadata
@@ -54,12 +52,6 @@ func (a *ActionWithMetadata) Build(ab *ActionBuilder) *ActionBuilder {
 		lastStep := &ab.steps[len(ab.steps)-1]
 		if a.Metadata.Timeout > 0 {
 			lastStep.timeout = a.Metadata.Timeout
-		}
-		if a.Metadata.MaxAttempts > 1 {
-			lastStep.maxAttempts = a.Metadata.MaxAttempts
-		}
-		if a.Metadata.RetryDelay > 0 {
-			lastStep.retryDelay = a.Metadata.RetryDelay
 		}
 	}
 
@@ -141,16 +133,10 @@ func (r *Routine) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			return fmt.Errorf("step %d: missing or invalid 'action' field", i+1)
 		}
 
-		// Extract step metadata (timeout, max_attempts, retry_delay) before unmarshaling
+		// Extract step metadata (timeout) before unmarshaling
 		var stepMetadata StepMetadata
 		if timeoutMs, ok := rawStep["timeout"].(int); ok {
 			stepMetadata.Timeout = time.Duration(timeoutMs) * time.Millisecond
-		}
-		if maxAttempts, ok := rawStep["max_attempts"].(int); ok {
-			stepMetadata.MaxAttempts = maxAttempts
-		}
-		if retryDelayMs, ok := rawStep["retry_delay"].(int); ok {
-			stepMetadata.RetryDelay = time.Duration(retryDelayMs) * time.Millisecond
 		}
 
 		// Look up the concrete struct type in the registry

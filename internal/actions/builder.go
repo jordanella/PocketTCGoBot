@@ -92,8 +92,6 @@ type Step struct {
 	canInterrupt bool
 	issue        error
 	timeout      time.Duration // Timeout for this specific step (0 = no timeout)
-	maxAttempts  int           // Maximum number of attempts for this step (0 or 1 = no retries)
-	retryDelay   time.Duration // Delay between retry attempts (default: 1s)
 }
 
 // Builder configuration methods
@@ -222,8 +220,8 @@ func (ab *ActionBuilder) executeSteps(ctx context.Context, bot BotInterface) err
 			return fmt.Errorf("build configuration error for step '%s': %w", step.name, step.issue)
 		}
 
-		// Execute step with timeout and retries
-		if err := ab.executeStepWithRetries(ctx, bot, &step); err != nil {
+		// Execute step with timeout
+		if err := ab.executeStepWithTimeout(ctx, bot, &step); err != nil {
 			if !ab.ignoreErrors {
 				return err
 			}
@@ -232,79 +230,30 @@ func (ab *ActionBuilder) executeSteps(ctx context.Context, bot BotInterface) err
 	return nil
 }
 
-// executeStepWithRetries executes a single step with timeout and retry logic
-func (ab *ActionBuilder) executeStepWithRetries(ctx context.Context, bot BotInterface, step *Step) error {
-	maxAttempts := step.maxAttempts
-	if maxAttempts == 0 {
-		maxAttempts = 1 // Default: no retries
+// executeStepWithTimeout executes a single step with optional timeout
+func (ab *ActionBuilder) executeStepWithTimeout(ctx context.Context, bot BotInterface, step *Step) error {
+	// If no timeout specified, execute directly
+	if step.timeout == 0 {
+		return step.execute(bot)
 	}
 
-	retryDelay := step.retryDelay
-	if retryDelay == 0 {
-		retryDelay = 1 * time.Second // Default: 1 second between retries
+	// Create step context with timeout
+	stepCtx, cancel := context.WithTimeout(ctx, step.timeout)
+	defer cancel()
+
+	// Execute the step in a goroutine to handle timeout
+	done := make(chan error, 1)
+	go func() {
+		done <- step.execute(bot)
+	}()
+
+	// Wait for execution or timeout
+	select {
+	case <-stepCtx.Done():
+		return fmt.Errorf("step '%s' timed out after %v", step.name, step.timeout)
+	case err := <-done:
+		return err
 	}
-
-	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		// Create step context with timeout if specified
-		stepCtx := ctx
-		var cancel context.CancelFunc
-		if step.timeout > 0 {
-			stepCtx, cancel = context.WithTimeout(ctx, step.timeout)
-		}
-
-		// Execute the step in a goroutine to handle timeout
-		done := make(chan error, 1)
-		go func() {
-			done <- step.execute(bot)
-		}()
-
-		// Wait for execution or timeout
-		select {
-		case <-stepCtx.Done():
-			if cancel != nil {
-				cancel()
-			}
-			lastErr = fmt.Errorf("step '%s' timed out after %v", step.name, step.timeout)
-
-			// If this isn't the last attempt, wait before retrying
-			if attempt < maxAttempts {
-				fmt.Printf("Step '%s' attempt %d/%d failed (timeout), retrying in %v...\n",
-					step.name, attempt, maxAttempts, retryDelay)
-				time.Sleep(retryDelay)
-				continue
-			}
-			return lastErr
-
-		case err := <-done:
-			if cancel != nil {
-				cancel()
-			}
-
-			if err == nil {
-				// Success
-				if attempt > 1 {
-					fmt.Printf("Step '%s' succeeded on attempt %d/%d\n", step.name, attempt, maxAttempts)
-				}
-				return nil
-			}
-
-			lastErr = err
-
-			// If this isn't the last attempt, wait before retrying
-			if attempt < maxAttempts {
-				fmt.Printf("Step '%s' attempt %d/%d failed: %v, retrying in %v...\n",
-					step.name, attempt, maxAttempts, err, retryDelay)
-				time.Sleep(retryDelay)
-				continue
-			}
-
-			// Last attempt failed
-			return fmt.Errorf("step '%s' failed after %d attempts: %w", step.name, maxAttempts, lastErr)
-		}
-	}
-
-	return lastErr
 }
 
 // checkExecutionState checks if routine should pause or stop
