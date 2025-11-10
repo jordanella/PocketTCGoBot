@@ -174,10 +174,21 @@ func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy Re
 	// Track the routine name for restart capability
 	bot.SetLastRoutine(routineName)
 
-	// Get routine from registry
-	routineBuilder, err := bot.Routines().Get(routineName)
+	// Get routine with sentries from registry
+	routineBuilder, sentries, err := bot.Routines().GetWithSentries(routineName)
 	if err != nil {
 		return fmt.Errorf("failed to get routine '%s': %w", routineName, err)
+	}
+
+	// Get routine metadata for config parameters
+	routineMetadata := bot.Routines().GetMetadata(routineName + ".yaml")
+	var configParams []actions.ConfigParam
+	if routineMetadata != nil {
+		if metadata, ok := routineMetadata.(map[string]interface{}); ok {
+			if config, ok := metadata["config"].([]actions.ConfigParam); ok {
+				configParams = config
+			}
+		}
 	}
 
 	// Start routine execution tracking if database is available and account is injected
@@ -201,9 +212,30 @@ func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy Re
 		}
 	}
 
+	// Create routine executor with sentries
+	executor := actions.NewRoutineExecutor(routineBuilder, sentries)
+
+	// Helper function to execute one iteration with proper initialization
+	executeIteration := func() error {
+		// Clear non-persistent variables before each iteration
+		if vs, ok := bot.Variables().(*actions.VariableStore); ok {
+			vs.ClearNonPersistent()
+		}
+
+		// Reinitialize config variables
+		if len(configParams) > 0 {
+			if err := actions.InitializeConfigVariables(bot, configParams, nil); err != nil {
+				return fmt.Errorf("failed to initialize config variables: %w", err)
+			}
+		}
+
+		// Execute the routine with sentries
+		return executor.Execute(bot)
+	}
+
 	// If restart is not enabled, execute once and return
 	if !policy.Enabled {
-		err := routineBuilder.Execute(bot)
+		err := executeIteration()
 
 		// Update routine execution tracking
 		if db != nil && executionID > 0 {
@@ -226,10 +258,10 @@ func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy Re
 	currentDelay := policy.InitialDelay
 
 	for {
-		// Execute the routine
-		err := routineBuilder.Execute(bot)
+		// Execute the routine (with variable reinitialization)
+		err := executeIteration()
 
-		// Success - reset retry counter if configured
+		// Success - reset retry counter and restart routine
 		if err == nil {
 			// Update routine execution tracking
 			if db != nil && executionID > 0 {
@@ -243,7 +275,28 @@ func (m *Manager) ExecuteWithRestart(instance int, routineName string, policy Re
 			if policy.ResetOnSuccess && retryCount > 0 {
 				fmt.Printf("Bot %d: Routine '%s' succeeded after %d retries\n", instance, routineName, retryCount)
 			}
-			return nil
+
+			// Reset retry counter for next iteration
+			retryCount = 0
+			currentDelay = policy.InitialDelay
+
+			// Start new execution tracking for next iteration
+			if db != nil {
+				if deviceAccountStr, exists := bot.Variables().Get("device_account_id"); exists && deviceAccountStr != "" {
+					fmt.Sscanf(deviceAccountStr, "%d", &accountID)
+					executionID, err = database.StartRoutineExecution(db, accountID, routineName, instance)
+					if err != nil {
+						fmt.Printf("Bot %d: Warning - failed to start routine tracking: %v\n", instance, err)
+						executionID = 0
+					} else {
+						bot.Variables().Set("execution_id", fmt.Sprintf("%d", executionID))
+						fmt.Printf("Bot %d: Restarting routine from beginning (new execution ID: %d)\n", instance, executionID)
+					}
+				}
+			}
+
+			// Continue to next iteration (infinite loop until stopped)
+			continue
 		}
 
 		// Check if we've exceeded max retries
