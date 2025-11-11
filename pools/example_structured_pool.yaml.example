@@ -41,14 +41,23 @@ queries:
       - column: "shinedust"
         comparator: ">"
         value: "50000"
+        # enabled defaults to true if omitted
       - column: "is_banned"
         comparator: "="
         value: "0"
+      - column: "level"
+        comparator: ">="
+        value: "5"
+        enabled: false  # Disabled - will not be included in query
     sort:
       - column: "shinedust"
         direction: "desc"
+        # enabled defaults to true if omitted
       - column: "packs_opened"
         direction: "desc"
+      - column: "level"
+        direction: "desc"
+        enabled: false  # Disabled - will not be included in ORDER BY
     limit: 25
 
 # Manual inclusions - specific accounts to add
@@ -110,6 +119,17 @@ config:
 # ==========================================
 # - asc (ascending)
 # - desc (descending)
+
+# ==========================================
+# Enabled Parameter:
+# ==========================================
+# Both filters and sort orders support an optional "enabled" parameter:
+# - enabled: true  (explicitly enabled)
+# - enabled: false (disabled - will be ignored in query)
+# - (omitted)      (defaults to true)
+#
+# This allows you to temporarily disable filters/sorts without removing them.
+# Useful for testing different query configurations in the GUI.
 
 # ==========================================
 # Examples:

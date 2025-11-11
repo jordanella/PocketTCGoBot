@@ -40,29 +40,43 @@ type UnifiedPoolDefinition struct {
 }
 
 // QuerySource represents a single query for populating accounts
-// Uses structured filters instead of raw SQL for easy unmarshaling and GUI building
+// Uses structured filters for easy unmarshaling and GUI building
 type QuerySource struct {
 	Name    string        `yaml:"name"`
 	Filters []QueryFilter `yaml:"filters,omitempty"` // Filter conditions (combined with AND)
 	Sort    []SortOrder   `yaml:"sort,omitempty"`    // Sort orders (applied in sequence)
 	Limit   int           `yaml:"limit,omitempty"`   // Result limit (0 = no limit)
-
-	// Deprecated: Use Filters instead. Kept for backward compatibility.
-	SQL        string                 `yaml:"sql,omitempty"`
-	Parameters map[string]interface{} `yaml:"parameters,omitempty"`
 }
 
 // QueryFilter represents a single filter condition
 type QueryFilter struct {
-	Column     string `yaml:"column"`     // Database column name (e.g., "packs_opened")
-	Comparator string `yaml:"comparator"` // Comparison operator (e.g., ">=", "=", "<", "LIKE")
-	Value      string `yaml:"value"`      // Comparison value
+	Column     string `yaml:"column"`              // Database column name (e.g., "packs_opened")
+	Comparator string `yaml:"comparator"`          // Comparison operator (e.g., ">=", "=", "<", "LIKE")
+	Value      string `yaml:"value"`               // Comparison value
+	Enabled    *bool  `yaml:"enabled,omitempty"`   // Whether this filter is active (default: true if omitted)
+}
+
+// IsEnabled returns true if the filter is enabled (default: true)
+func (f *QueryFilter) IsEnabled() bool {
+	if f.Enabled == nil {
+		return true // Default to enabled
+	}
+	return *f.Enabled
 }
 
 // SortOrder represents a sort ordering
 type SortOrder struct {
 	Column    string `yaml:"column"`    // Column to sort by
 	Direction string `yaml:"direction"` // "asc" or "desc"
+	Enabled   *bool  `yaml:"enabled,omitempty"` // Whether this sort is active (default: true if omitted)
+}
+
+// IsEnabled returns true if the sort is enabled (default: true)
+func (s *SortOrder) IsEnabled() bool {
+	if s.Enabled == nil {
+		return true // Default to enabled
+	}
+	return *s.Enabled
 }
 
 // GenerateSQL generates a SQL query from structured filters
@@ -74,35 +88,47 @@ func (q *QuerySource) GenerateSQL() (string, []interface{}) {
 	sb.WriteString("SELECT device_account, device_password, shinedust, packs_opened, last_used_at\n")
 	sb.WriteString("FROM accounts\n")
 
-	// WHERE clause from filters
-	if len(q.Filters) > 0 {
-		sb.WriteString("WHERE ")
-		for i, filter := range q.Filters {
-			if i > 0 {
-				sb.WriteString("\n  AND ")
-			}
-			sb.WriteString(filter.Column)
-			sb.WriteString(" ")
-			sb.WriteString(filter.Comparator)
-			sb.WriteString(" ?")
-
-			// Add parameter value
-			params = append(params, filter.Value)
+	// WHERE clause from enabled filters only
+	hasWhere := false
+	for _, filter := range q.Filters {
+		if !filter.IsEnabled() {
+			continue
 		}
+		if !hasWhere {
+			sb.WriteString("WHERE ")
+			hasWhere = true
+		} else {
+			sb.WriteString("\n  AND ")
+		}
+		sb.WriteString(filter.Column)
+		sb.WriteString(" ")
+		sb.WriteString(filter.Comparator)
+		sb.WriteString(" ?")
+
+		// Add parameter value
+		params = append(params, filter.Value)
+	}
+	if hasWhere {
 		sb.WriteString("\n")
 	}
 
-	// ORDER BY clause
-	if len(q.Sort) > 0 {
-		sb.WriteString("ORDER BY ")
-		for i, sort := range q.Sort {
-			if i > 0 {
-				sb.WriteString(", ")
-			}
-			sb.WriteString(sort.Column)
-			sb.WriteString(" ")
-			sb.WriteString(strings.ToUpper(sort.Direction))
+	// ORDER BY clause from enabled sorts only
+	hasOrder := false
+	for _, sort := range q.Sort {
+		if !sort.IsEnabled() {
+			continue
 		}
+		if !hasOrder {
+			sb.WriteString("ORDER BY ")
+			hasOrder = true
+		} else {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(sort.Column)
+		sb.WriteString(" ")
+		sb.WriteString(strings.ToUpper(sort.Direction))
+	}
+	if hasOrder {
 		sb.WriteString("\n")
 	}
 
@@ -189,13 +215,22 @@ func validateUnifiedPoolDefinition(def *UnifiedPoolDefinition) error {
 		return fmt.Errorf("pool_name is required")
 	}
 
-	// Validate queries (ensure they're SELECT only)
+	// Validate queries (ensure they have filters and at least one is enabled)
 	for i, query := range def.Queries {
-		if query.SQL == "" {
-			return fmt.Errorf("query %d (%s) has empty SQL", i, query.Name)
+		if len(query.Filters) == 0 {
+			return fmt.Errorf("query %d (%s) has no filters defined", i, query.Name)
 		}
-		if err := validateQuerySafety(query.SQL); err != nil {
-			return fmt.Errorf("query %d (%s): %w", i, query.Name, err)
+
+		// Validate at least one enabled filter
+		hasEnabledFilter := false
+		for _, filter := range query.Filters {
+			if filter.IsEnabled() {
+				hasEnabledFilter = true
+				break
+			}
+		}
+		if !hasEnabledFilter {
+			return fmt.Errorf("query %d (%s) has no enabled filters", i, query.Name)
 		}
 	}
 
@@ -311,20 +346,8 @@ func (p *UnifiedAccountPool) refresh() error {
 
 // executeQuery executes a single query and returns accounts
 func (p *UnifiedAccountPool) executeQuery(query QuerySource) ([]*Account, error) {
-	var sqlQuery string
-	var params []interface{}
-
-	// Generate SQL from structured filters (preferred) or use legacy SQL
-	if len(query.Filters) > 0 || len(query.Sort) > 0 || query.Limit > 0 {
-		// Use structured query
-		sqlQuery, params = query.GenerateSQL()
-	} else if query.SQL != "" {
-		// Legacy SQL support
-		sqlQuery = query.SQL
-		params = make([]interface{}, 0)
-	} else {
-		return nil, fmt.Errorf("query '%s' has neither filters nor SQL", query.Name)
-	}
+	// Generate SQL from structured filters
+	sqlQuery, params := query.GenerateSQL()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -840,44 +863,3 @@ func (p *UnifiedAccountPool) GetDefinition() *UnifiedPoolDefinition {
 	return p.definition
 }
 
-// validateQuerySafety validates that a SQL query is safe to execute
-func validateQuerySafety(query string) error {
-	// Simple safety checks - only allow SELECT
-	// In production, could use a SQL parser for more thorough validation
-	upper := ""
-	for _, c := range query {
-		if c >= 'a' && c <= 'z' {
-			upper += string(c - 32)
-		} else if c >= 'A' && c <= 'Z' {
-			upper += string(c)
-		} else if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
-			upper += " "
-		}
-	}
-
-	// Must start with SELECT
-	if len(upper) < 6 || upper[:6] != "SELECT" {
-		return fmt.Errorf("only SELECT queries are allowed")
-	}
-
-	// Check for dangerous keywords
-	dangerous := []string{"DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "EXEC", "EXECUTE"}
-	for _, keyword := range dangerous {
-		// Simple check - look for keyword surrounded by spaces
-		if contains(upper, " "+keyword+" ") || contains(upper, " "+keyword) {
-			return fmt.Errorf("query contains forbidden keyword: %s", keyword)
-		}
-	}
-
-	return nil
-}
-
-// contains checks if s contains substr
-func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
