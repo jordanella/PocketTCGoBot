@@ -358,9 +358,11 @@ func (t *AccountPoolsTab) populateAccountsTable(testResult *accountpool.TestResu
 		t.accountsData = append(t.accountsData, row)
 	}
 
-	// Refresh table
+	// Refresh table (wrapped in fyne.Do for thread safety)
 	if t.accountsTable != nil {
-		t.accountsTable.Refresh()
+		fyne.Do(func() {
+			t.accountsTable.Refresh()
+		})
 	}
 }
 
@@ -512,9 +514,11 @@ func (t *AccountPoolsTab) addPoolCard(poolName string) {
 	t.poolCards[poolName] = card
 	t.poolCardsMu.Unlock()
 
-	// Add to UI
-	t.poolListContainer.Add(card.GetContainer())
-	t.poolListContainer.Refresh()
+	// Add to UI (wrapped in fyne.Do for thread safety)
+	fyne.Do(func() {
+		t.poolListContainer.Add(card.GetContainer())
+		t.poolListContainer.Refresh()
+	})
 }
 
 // clearAllCards removes all pool cards
@@ -523,8 +527,11 @@ func (t *AccountPoolsTab) clearAllCards() {
 	t.poolCards = make(map[string]*components.AccountPoolCard)
 	t.poolCardsMu.Unlock()
 
-	t.poolListContainer.Objects = nil
-	t.poolListContainer.Refresh()
+	// Clear UI (wrapped in fyne.Do for thread safety)
+	fyne.Do(func() {
+		t.poolListContainer.Objects = nil
+		t.poolListContainer.Refresh()
+	})
 }
 
 // Card action handlers

@@ -264,9 +264,11 @@ func (t *OrchestrationTab) addGroupCard(group *bot.BotGroup) {
 	t.cards[group.Name] = card
 	t.cardsMu.Unlock()
 
-	// Add to UI
-	t.cardsContainer.Add(card.GetContainer())
-	t.cardsContainer.Refresh()
+	// Add to UI (wrapped in fyne.Do for thread safety)
+	fyne.Do(func() {
+		t.cardsContainer.Add(card.GetContainer())
+		t.cardsContainer.Refresh()
+	})
 }
 
 // parseInstances parses a comma-separated list of instance IDs
@@ -436,7 +438,10 @@ func (t *OrchestrationTab) handleShutdown(group *bot.BotGroup) {
 			}
 			t.cardsMu.Unlock()
 
-			t.cardsContainer.Refresh()
+			// Refresh UI (wrapped in fyne.Do for thread safety)
+			fyne.Do(func() {
+				t.cardsContainer.Refresh()
+			})
 			t.updateStatusLabel()
 
 			dialog.ShowInformation("Shutdown", fmt.Sprintf("Group '%s' shutdown and removed successfully", group.Name), t.window)

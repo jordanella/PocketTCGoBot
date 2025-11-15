@@ -131,8 +131,11 @@ func (c *AccountPoolCard) SetSelected(selected bool) {
 		c.nameText.Color = theme.Color(theme.ColorNameForeground)
 	}
 
-	c.nameText.Refresh()
-	c.container.Refresh()
+	// Refresh UI (wrapped in fyne.Do for thread safety)
+	fyne.Do(func() {
+		c.nameText.Refresh()
+		c.container.Refresh()
+	})
 }
 
 // UpdateData updates the card data
@@ -149,9 +152,12 @@ func (c *AccountPoolCard) UpdateData(accountCount int, lastUpdated string, descr
 		c.descText.Text = description[:47] + "..."
 	}
 
-	c.countText.Refresh()
-	c.updatedText.Refresh()
-	c.descText.Refresh()
+	// Refresh UI (wrapped in fyne.Do for thread safety)
+	fyne.Do(func() {
+		c.countText.Refresh()
+		c.updatedText.Refresh()
+		c.descText.Refresh()
+	})
 }
 
 // GetContainer returns the Fyne container for embedding in layouts
