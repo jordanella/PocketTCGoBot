@@ -45,7 +45,7 @@ type Controller struct {
 	botLauncherTab       *BotLauncherTab
 	managerGroupsTab     *ManagerGroupsTab
 	orchestrationTab     *tabs.OrchestrationTabV2
-	accountPoolsTab      *tabs.AccountPoolsTab
+	accountPoolsTab      *tabs.AccountPoolsTabV2
 
 	// Business logic - Registries (MVC: Model layer)
 	templateRegistry *templates.TemplateRegistry
@@ -210,10 +210,10 @@ func (c *Controller) initializeDatabase() {
 		poolsDir := "pools"
 		xmlStorageDir := "account_xmls" // Global XML storage directory
 		c.poolManager = accountpool.NewPoolManager(poolsDir, c.db.Conn(), xmlStorageDir)
-		c.accountPoolsTab = tabs.NewAccountPoolsTab(c.poolManager, c.db.Conn(), c.window)
 
-		// Initialize orchestrator with database connection
+		// Initialize orchestrator with database connection (need emulator manager for pools tab)
 		emulatorManager := c.CreateEmulatorManager()
+		c.accountPoolsTab = tabs.NewAccountPoolsTabV2(c.poolManager, c.db.Conn(), emulatorManager, c.window)
 		c.orchestrator = bot.NewOrchestrator(
 			c.config,
 			c.templateRegistry,
