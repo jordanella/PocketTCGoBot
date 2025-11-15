@@ -440,12 +440,12 @@ type CoordinateConfig struct {
 
 // RestartPolicy defines how bots should restart on failure
 type RestartPolicy struct {
-	Enabled        bool          // Whether auto-restart is enabled
-	MaxRetries     int           // Maximum number of restart attempts (0 = unlimited)
-	InitialDelay   time.Duration // Initial backoff delay
-	MaxDelay       time.Duration // Maximum backoff delay
-	BackoffFactor  float64       // Exponential backoff multiplier
-	ResetOnSuccess bool          // Reset retry counter on successful execution
+	Enabled        bool          `yaml:"enabled" json:"enabled"`               // Whether auto-restart is enabled
+	MaxRetries     int           `yaml:"max_retries" json:"max_retries"`       // Maximum number of restart attempts (0 = unlimited)
+	InitialDelay   time.Duration `yaml:"initial_delay" json:"initial_delay"`   // Initial backoff delay
+	MaxDelay       time.Duration `yaml:"max_delay" json:"max_delay"`           // Maximum backoff delay
+	BackoffFactor  float64       `yaml:"backoff_factor" json:"backoff_factor"` // Exponential backoff multiplier
+	ResetOnSuccess bool          `yaml:"reset_on_success" json:"reset_on_success"` // Reset retry counter on successful execution
 }
 
 // DefaultRestartPolicy returns sensible defaults

@@ -48,7 +48,7 @@ func (o *Orchestrator) LaunchGroup(groupName string, options LaunchOptions) (*La
 			return result, fmt.Errorf("failed to resolve account pool '%s': %w", group.AccountPoolName, err)
 		}
 		group.AccountPool = pool
-		group.Manager.SetAccountPool(pool)
+		// Account pool is already set on group, no need for manager
 	}
 
 	// Phase 1: Routine Validation
@@ -220,7 +220,7 @@ func (o *Orchestrator) launchBotsStaggered(group *BotGroup, instances []int, opt
 
 	for i, instanceID := range instances {
 		// Create bot for this instance
-		bot, err := group.Manager.CreateBot(instanceID)
+		bot, err := group.createBot(instanceID)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("failed to create bot for instance %d: %v", instanceID, err))
 			// Release this instance
@@ -264,7 +264,7 @@ func (o *Orchestrator) runBotRoutine(group *BotGroup, botInfo *BotInfo, policy R
 	botInfo.Status = BotStatusRunning
 
 	// Execute with restart policy
-	err := group.Manager.ExecuteWithRestart(botInfo.InstanceID, group.RoutineName, policy)
+	err := group.executeWithRestart(botInfo.InstanceID, group.RoutineName, policy)
 
 	// Update status based on result
 	if err != nil {
@@ -309,12 +309,12 @@ func (o *Orchestrator) StopGroup(groupName string) error {
 	}
 	group.activeBotsMu.Unlock()
 
-	// Shutdown all bots via manager
-	group.Manager.ShutdownAll()
+	// Shutdown all bots
+	group.shutdownAllBots()
 
 	// Release all account checkouts for this orchestration
-	if db := group.Manager.Database(); db != nil && group.OrchestrationID != "" {
-		released, err := database.ReleaseAllAccountsForOrchestration(db, group.OrchestrationID)
+	if o.db != nil && group.OrchestrationID != "" {
+		released, err := database.ReleaseAllAccountsForOrchestration(o.db, group.OrchestrationID)
 		if err != nil {
 			fmt.Printf("Warning: Failed to release accounts for orchestration %s: %v\n", group.OrchestrationID, err)
 		} else if released > 0 {
@@ -357,7 +357,7 @@ func (o *Orchestrator) stopBotOnInstance(groupName string, instanceID int) error
 	botInfo.routineCancel()
 
 	// Shutdown bot
-	group.Manager.ShutdownBot(instanceID)
+	group.shutdownBot(instanceID)
 
 	// Release instance
 	o.releaseInstance(instanceID, groupName)

@@ -2,7 +2,7 @@
 |   Emulator Instances                                                                                         |
 |--------------------------------------------------------------------------------------------------------------|
 |    ------------------------------------------------------------------------------------------------------  | |
-|   |   Orchestration Group Name <orchestrationID>                                          [ + Instance ] | | |
+|   |   Orchestration Group Name <orchestrationID>                                          [ + Instance ] | | | @scrollbar
 |   |   Description...                                                                                     | |-|
 |   |   Started <started at>   Account Pool <account_pool_name> (<remaining>/<total>)                      | |#|                                     
 |    ------------------------------------------------------------------------------------------------------  
@@ -48,3 +48,36 @@
 |        |   Associated <group A> <group B> <group C> and # more...
 |         -------------------------------------------------------------------------------------------------
 |--------------------------------------------------------------------------------------------------------------|
+
+
+Canvas
+    Header Section
+    Scroll Area
+        OrchestrationGroupSection
+            Card
+                GroupSectionCardContent
+                    LabelButtonsRow
+                        LabelContainer
+                            NameLabel IndexLabel
+                        InlineButtons
+                            AddInstance
+                            Pause
+                            Resume
+                            Stop
+                            Shutdown
+                    DescriptionLabel
+                    Inline
+                        StartedLabel
+                        AccountPoolLabel
+            Card(indented)
+                InstanceCard
+                    LabelButtonsRow
+                        LabelContainer
+                            NameLabel IndexLabel
+                        InlineButtons
+                            Quick Start
+                            Launch
+                            Shutdown
+                    InjectionLabel
+                    AssociatedGroups
+                InstanceCard

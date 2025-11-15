@@ -1,0 +1,19 @@
+pool_name: "Test Pool"
+description: "Test pool for orchestration workflow verification"
+queries:
+  - name: "All Available Accounts"
+    filters:
+      - column: "pack_count"
+        operator: ">="
+        value: "0"
+    sort:
+      - column: "pack_count"
+        order: "desc"
+include: []
+exclude: []
+watched_paths: []
+config:
+  sort_method: "packs_desc"
+  retry_failed: false
+  max_accounts: 100
+  enabled: true

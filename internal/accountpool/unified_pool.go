@@ -863,3 +863,45 @@ func (p *UnifiedAccountPool) GetDefinition() *UnifiedPoolDefinition {
 	return p.definition
 }
 
+// ===== YAML Persistence Methods =====
+
+// SaveToYAML saves the pool definition to a YAML file
+func (d *UnifiedPoolDefinition) SaveToYAML(dirPath string) error {
+	// Create directory if it doesn't exist
+	if err := os.MkdirAll(dirPath, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Generate filename from pool name (sanitized)
+	filename := sanitizeFilename(d.PoolName) + ".yaml"
+	filePath := filepath.Join(dirPath, filename)
+
+	// Marshal to YAML
+	data, err := yaml.Marshal(d)
+	if err != nil {
+		return fmt.Errorf("failed to marshal definition: %w", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteYAML deletes the YAML file for this pool definition
+func (d *UnifiedPoolDefinition) DeleteYAML(dirPath string) error {
+	filename := sanitizeFilename(d.PoolName) + ".yaml"
+	filePath := filepath.Join(dirPath, filename)
+
+	if err := os.Remove(filePath); err != nil {
+		if os.IsNotExist(err) {
+			// File doesn't exist, not an error
+			return nil
+		}
+		return fmt.Errorf("failed to delete file: %w", err)
+	}
+
+	return nil
+}

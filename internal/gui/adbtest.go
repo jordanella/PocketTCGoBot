@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"jordanella.com/pocket-tcg-go/internal/accounts"
 	"jordanella.com/pocket-tcg-go/internal/adb"
 	"jordanella.com/pocket-tcg-go/internal/emulator"
 )
@@ -109,6 +110,18 @@ func (a *ADBTestTab) Build() fyne.CanvasObject {
 		a.positionInstanceWindow()
 	})
 
+	extractOBBBtn := widget.NewButton("Extract OBB Data", func() {
+		a.extractOBBData()
+	})
+
+	extractAppDataBtn := widget.NewButton("Extract App Data", func() {
+		a.extractAppData()
+	})
+
+	crawlStorageBtn := widget.NewButton("Crawl Storage", func() {
+		a.crawlStorage()
+	})
+
 	// Button layout
 	buttonGrid := container.NewGridWithColumns(2,
 		a.findADBButton,
@@ -119,6 +132,9 @@ func (a *ADBTestTab) Build() fyne.CanvasObject {
 		launchAppBtn,
 		killAppBtn,
 		positionWindowBtn,
+		extractOBBBtn,
+		extractAppDataBtn,
+		crawlStorageBtn,
 	)
 
 	// Instance selection section
@@ -639,5 +655,113 @@ func (a *ADBTestTab) positionInstanceWindow() {
 			a.selectedInstance, instance.X, instance.Y, instance.Width, instance.Height)))
 		bus.Publish(AddLog(LogLevelInfo, a.selectedInstance, fmt.Sprintf("Window positioned at (%d, %d) with size %dx%d",
 			instance.X, instance.Y, instance.Width, instance.Height)))
+	}()
+}
+
+// extractOBBData extracts OBB data from the device using the accounts package workflow
+func (a *ADBTestTab) extractOBBData() {
+	bus := a.controller.GetEventBus()
+
+	bus.Publish(ShowProgressBar("adbtest"))
+	bus.Publish(UpdateLabel("adbtest.results", fmt.Sprintf("Extracting OBB data from Instance %d...", a.selectedInstance)))
+
+	go func() {
+		// Calculate port for this instance
+		port := 16384 + (a.selectedInstance * 32)
+
+		// Create extraction directory
+		extractDir := fmt.Sprintf("./extracted_obb/instance_%d", a.selectedInstance)
+
+		// Get ADB path from config
+		adbPath := a.controller.GetConfig().ADB().Path
+
+		// Use the accounts package extraction function
+		err := accounts.ExtractOBBData(adbPath, port, extractDir)
+
+		bus.Publish(HideProgressBar("adbtest"))
+
+		if err != nil {
+			bus.Publish(UpdateLabel("adbtest.results", fmt.Sprintf("❌ Failed to extract OBB data from Instance %d: %v", a.selectedInstance, err)))
+			bus.Publish(AddLog(LogLevelError, a.selectedInstance, fmt.Sprintf("Failed to extract OBB data: %v", err)))
+			return
+		}
+
+		resultMsg := fmt.Sprintf("✓ OBB data extracted successfully from Instance %d\n\nLocation: %s\n\nCheck the folder for extracted OBB files.",
+			a.selectedInstance, extractDir)
+
+		bus.Publish(UpdateLabel("adbtest.results", resultMsg))
+		bus.Publish(AddLog(LogLevelInfo, a.selectedInstance, fmt.Sprintf("OBB data extracted to %s", extractDir)))
+	}()
+}
+
+// extractAppData extracts app data directory from the device using the accounts package workflow
+func (a *ADBTestTab) extractAppData() {
+	bus := a.controller.GetEventBus()
+
+	bus.Publish(ShowProgressBar("adbtest"))
+	bus.Publish(UpdateLabel("adbtest.results", fmt.Sprintf("Extracting app data from Instance %d...", a.selectedInstance)))
+
+	go func() {
+		// Calculate port for this instance
+		port := 16384 + (a.selectedInstance * 32)
+
+		// Create extraction directory
+		extractDir := fmt.Sprintf("./extracted_app_data/instance_%d", a.selectedInstance)
+
+		// Get ADB path from config
+		adbPath := a.controller.GetConfig().ADB().Path
+
+		// Use the accounts package extraction function
+		err := accounts.ExtractAppData(adbPath, port, extractDir)
+
+		bus.Publish(HideProgressBar("adbtest"))
+
+		if err != nil {
+			bus.Publish(UpdateLabel("adbtest.results", fmt.Sprintf("❌ Failed to extract app data from Instance %d: %v", a.selectedInstance, err)))
+			bus.Publish(AddLog(LogLevelError, a.selectedInstance, fmt.Sprintf("Failed to extract app data: %v", err)))
+			return
+		}
+
+		resultMsg := fmt.Sprintf("✓ App data extracted successfully from Instance %d\n\nLocation: %s\n\nThis includes:\n- Databases (user data, cards, collection)\n- Shared Preferences (settings)\n- Cache files",
+			a.selectedInstance, extractDir)
+
+		bus.Publish(UpdateLabel("adbtest.results", resultMsg))
+		bus.Publish(AddLog(LogLevelInfo, a.selectedInstance, fmt.Sprintf("App data extracted to %s", extractDir)))
+	}()
+}
+
+// crawlStorage crawls device storage and outputs directory structure to a file
+func (a *ADBTestTab) crawlStorage() {
+	bus := a.controller.GetEventBus()
+
+	bus.Publish(ShowProgressBar("adbtest"))
+	bus.Publish(UpdateLabel("adbtest.results", fmt.Sprintf("Crawling storage on Instance %d...\n\nThis may take 30-60 seconds...", a.selectedInstance)))
+
+	go func() {
+		// Calculate port for this instance
+		port := 16384 + (a.selectedInstance * 32)
+
+		// Create output file
+		outputFile := fmt.Sprintf("./storage_crawl_instance_%d.txt", a.selectedInstance)
+
+		// Get ADB path from config
+		adbPath := a.controller.GetConfig().ADB().Path
+
+		// Use the accounts package crawl function
+		err := accounts.CrawlStorage(adbPath, port, outputFile)
+
+		bus.Publish(HideProgressBar("adbtest"))
+
+		if err != nil {
+			bus.Publish(UpdateLabel("adbtest.results", fmt.Sprintf("❌ Failed to crawl storage on Instance %d: %v", a.selectedInstance, err)))
+			bus.Publish(AddLog(LogLevelError, a.selectedInstance, fmt.Sprintf("Failed to crawl storage: %v", err)))
+			return
+		}
+
+		resultMsg := fmt.Sprintf("✓ Storage crawl completed for Instance %d\n\nOutput saved to: %s\n\nOpen this file to see the complete directory structure of the device.",
+			a.selectedInstance, outputFile)
+
+		bus.Publish(UpdateLabel("adbtest.results", resultMsg))
+		bus.Publish(AddLog(LogLevelInfo, a.selectedInstance, fmt.Sprintf("Storage crawl saved to %s", outputFile)))
 	}()
 }

@@ -1,0 +1,57 @@
+# Example Orchestration Group Configuration
+# This file demonstrates the YAML format for bot group definitions
+# Save files like this in: bin/groups/
+
+name: Premium Farmers
+description: Automated farming of premium packs with account rotation
+
+# Routine configuration
+routine_name: farm_premium_packs.yaml
+routine_config:
+  max_runs: "100"
+  delay_between_runs: "5"
+  target_pack_type: "premium"
+
+# Emulator configuration
+available_instances:
+  - 1
+  - 2
+  - 3
+  - 4
+requested_bot_count: 2
+
+# Account pool configuration (optional)
+account_pool_name: Premium
+
+# Launch options
+launch_options:
+  validate_routine: true
+  validate_templates: true
+  validate_emulators: false
+  on_conflict: 2  # 0=Ask, 1=Cancel, 2=Skip, 3=Abort
+  stagger_delay: 5s
+  emulator_timeout: 30s
+  restart_policy:
+    enabled: true
+    max_retries: 5
+    initial_delay: 10s
+    max_delay: 5m0s
+    backoff_factor: 2
+    reset_on_success: true
+
+# Restart policy (top-level, used during execution)
+restart_policy:
+  enabled: true
+  max_retries: 5
+  initial_delay: 10s
+  max_delay: 5m0s
+  backoff_factor: 2
+  reset_on_success: true
+
+# Metadata
+created_at: 2025-01-14T10:30:00Z
+updated_at: 2025-01-14T10:30:00Z
+tags:
+  - farming
+  - premium
+  - automated

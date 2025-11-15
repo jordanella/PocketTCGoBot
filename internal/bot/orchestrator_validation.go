@@ -22,12 +22,12 @@ type ValidationError struct {
 type ValidationErrorType string
 
 const (
-	ValidationErrorRoutineNotFound   ValidationErrorType = "routine_not_found"
-	ValidationErrorRoutineParse      ValidationErrorType = "routine_parse_error"
-	ValidationErrorActionNotFound    ValidationErrorType = "action_not_found"
-	ValidationErrorTemplateNotFound  ValidationErrorType = "template_not_found"
-	ValidationErrorInvalidConfig     ValidationErrorType = "invalid_config"
-	ValidationErrorMissingVariable   ValidationErrorType = "missing_variable"
+	ValidationErrorRoutineNotFound  ValidationErrorType = "routine_not_found"
+	ValidationErrorRoutineParse     ValidationErrorType = "routine_parse_error"
+	ValidationErrorActionNotFound   ValidationErrorType = "action_not_found"
+	ValidationErrorTemplateNotFound ValidationErrorType = "template_not_found"
+	ValidationErrorInvalidConfig    ValidationErrorType = "invalid_config"
+	ValidationErrorMissingVariable  ValidationErrorType = "missing_variable"
 )
 
 // ValidateRoutine performs comprehensive validation of a routine
@@ -94,9 +94,6 @@ func (o *Orchestrator) validateTemplates(routineName string) []ValidationError {
 
 	// Get routine metadata to find template references
 	metadata := o.routineRegistry.GetMetadata(routineName)
-	if metadata == nil {
-		return errors
-	}
 
 	// Extract template references from metadata
 	// The metadata structure depends on how routines store template info
@@ -126,14 +123,11 @@ func (o *Orchestrator) validateConfiguration(routineName string, config map[stri
 
 	// Get routine metadata to find required/available variables
 	metadata := o.routineRegistry.GetMetadata(routineName)
-	if metadata == nil {
-		return errors
-	}
 
 	// Extract variable definitions from metadata
 	if metadataMap, ok := metadata.(map[string]interface{}); ok {
 		// Check for required variables
-		if requiredVars, ok := metadataMap["required_variables"].([]interface{}); ok {
+		if requiredVars, ok := metadataMap["required_variables"].([]any); ok {
 			for _, v := range requiredVars {
 				if varName, ok := v.(string); ok {
 					// Check if required variable is provided in config

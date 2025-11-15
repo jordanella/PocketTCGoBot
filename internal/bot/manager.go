@@ -27,41 +27,6 @@ type Manager struct {
 	orchestrationID  string                  // UUID of the bot group this manager belongs to
 }
 
-// NewManager creates a new bot manager with shared registries
-// Uses current directory as base path for templates and routines
-// DEPRECATED: Use NewManagerWithRegistries for better control
-func NewManager(config *Config) (*Manager, error) {
-	return NewManagerWithBasePath(config, "")
-}
-
-// NewManagerWithBasePath creates a new bot manager with shared registries using a custom base path
-// If basePath is empty, uses current directory
-// DEPRECATED: Use NewManagerWithRegistries to share registries across multiple managers
-func NewManagerWithBasePath(config *Config, basePath string) (*Manager, error) {
-	// Initialize shared template registry
-	templatesPath := filepath.Join(basePath, "templates")
-	templateRegistry := templates.NewTemplateRegistry(templatesPath)
-
-	// Load templates from YAML files if directory exists
-	templatesConfigPath := filepath.Join(basePath, "templates", "registry")
-	if err := templateRegistry.LoadFromDirectory(templatesConfigPath); err != nil {
-		// Non-fatal: templates directory might not exist or be empty
-		fmt.Printf("Info: Template directory not loaded: %v\n", err)
-	}
-
-	// Initialize shared routine registry
-	routinesPath := filepath.Join(basePath, "routines")
-	routineRegistry := actions.NewRoutineRegistry(routinesPath).WithTemplateRegistry(templateRegistry)
-
-	return &Manager{
-		bots:             make(map[int]*Bot),
-		config:           config,
-		basePath:         basePath,
-		templateRegistry: templateRegistry,
-		routineRegistry:  routineRegistry,
-	}, nil
-}
-
 // NewManagerWithRegistries creates a new bot manager with externally provided registries
 // This allows multiple managers to share the same template and routine registries
 func NewManagerWithRegistries(

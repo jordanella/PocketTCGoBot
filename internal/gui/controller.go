@@ -14,6 +14,7 @@ import (
 	"jordanella.com/pocket-tcg-go/internal/bot"
 	"jordanella.com/pocket-tcg-go/internal/database"
 	"jordanella.com/pocket-tcg-go/internal/emulator"
+	"jordanella.com/pocket-tcg-go/internal/gui/tabs"
 	"jordanella.com/pocket-tcg-go/pkg/templates"
 )
 
@@ -30,23 +31,28 @@ type Controller struct {
 	// MuMu instances (detected)
 	mumuInstances   []*emulator.MuMuInstance
 	mumuInstancesMu sync.RWMutex
+	mumuManager     *emulator.MuMuManager
 
 	// GUI components
-	dashboard         *DashboardTab
-	configTab         *ConfigTab
-	logTab            *LogTab
-	accountTab        *AccountTab
-	resultsTab        *ResultsTab
-	controlTab        *ControlTab
-	adbTestTab        *ADBTestTab
-	routinesTab       *RoutinesEnhancedTab
-	botLauncherTab    *BotLauncherTab
-	managerGroupsTab  *ManagerGroupsTab
-	accountPoolsTab   *AccountPoolsTab
+	emulatorInstancesTab *tabs.EmulatorInstancesTab
+	configTab            *ConfigTab
+	logTab               *LogTab
+	accountTab           *AccountTab
+	resultsTab           *ResultsTab
+	controlTab           *ControlTab
+	adbTestTab           *ADBTestTab
+	routinesTab          *RoutinesEnhancedTab
+	botLauncherTab       *BotLauncherTab
+	managerGroupsTab     *ManagerGroupsTab
+	orchestrationTab     *tabs.OrchestrationTabV2
+	accountPoolsTab      *tabs.AccountPoolsTab
 
 	// Business logic - Registries (MVC: Model layer)
 	templateRegistry *templates.TemplateRegistry
 	routineRegistry  *actions.RoutineRegistry
+
+	// Orchestrator for bot groups
+	orchestrator *bot.Orchestrator
 
 	// Database tabs
 	db              *database.DB
@@ -77,6 +83,7 @@ func NewController(cfg *bot.Config, app fyne.App, window fyne.Window) *Controlle
 		window:        window,
 		bots:          make(map[int]*bot.Bot),
 		mumuInstances: make([]*emulator.MuMuInstance, 0),
+		mumuManager:   emulator.NewMuMuManager(cfg.FolderPath),
 		currentTab:    0,
 		eventBus:      NewEventBus(),
 	}
@@ -90,7 +97,6 @@ func NewController(cfg *bot.Config, app fyne.App, window fyne.Window) *Controlle
 	// Initialize business logic registries (MVC: Model layer)
 	ctrl.initializeRegistries()
 
-	ctrl.dashboard = NewDashboardTab(ctrl)
 	ctrl.configTab = NewConfigTab(ctrl)
 	ctrl.accountTab = NewAccountTab(ctrl)
 	ctrl.resultsTab = NewResultsTab(ctrl)
@@ -204,11 +210,40 @@ func (c *Controller) initializeDatabase() {
 		poolsDir := "pools"
 		xmlStorageDir := "account_xmls" // Global XML storage directory
 		c.poolManager = accountpool.NewPoolManager(poolsDir, c.db.Conn(), xmlStorageDir)
-		c.accountPoolsTab = NewAccountPoolsTab(c, c.poolManager, c.db.Conn())
+		c.accountPoolsTab = tabs.NewAccountPoolsTab(c.poolManager, c.db.Conn(), c.window)
+
+		// Initialize orchestrator with database connection
+		emulatorManager := c.CreateEmulatorManager()
+		c.orchestrator = bot.NewOrchestrator(
+			c.config,
+			c.templateRegistry,
+			c.routineRegistry,
+			emulatorManager,
+			c.poolManager,
+			c.db.Conn(),
+		)
+
+		// Load saved group definitions from disk
+		if err := c.orchestrator.LoadGroupDefinitionsFromDisk(); err != nil {
+			c.logTab.AddLog(LogLevelWarn, 0, fmt.Sprintf("Failed to load group definitions: %v", err))
+		}
+
+		// Initialize orchestration tab
+		c.orchestrationTab = tabs.NewOrchestrationTabV2(c.orchestrator, c.window)
+
+		// Initialize emulator instances tab
+		c.emulatorInstancesTab = tabs.NewEmulatorInstancesTab(c.orchestrator, c.mumuManager, c.window)
+
+		if c.logTab != nil {
+			c.logTab.AddLog(LogLevelInfo, 0, "Orchestrator initialized successfully")
+		}
 	} else {
 		// Database not available - pools tab will not be functional
 		c.poolManager = nil
 		c.accountPoolsTab = nil
+		c.orchestrator = nil
+		c.orchestrationTab = nil
+		c.emulatorInstancesTab = nil
 	}
 }
 
@@ -219,24 +254,45 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 		widget.NewButton("Dashboard", func() { c.switchTab(0) }),
 		widget.NewButton("Bot Launcher", func() { c.switchTab(1) }),
 		widget.NewButton("Manager Groups", func() { c.switchTab(2) }),
-		widget.NewButton("Account Pools", func() { c.switchTab(3) }),
-		widget.NewButton("Configuration", func() { c.switchTab(4) }),
-		widget.NewButton("Event Log", func() { c.switchTab(5) }),
-		widget.NewButton("Accounts", func() { c.switchTab(6) }),
-		widget.NewButton("Results", func() { c.switchTab(7) }),
-		widget.NewButton("Controls", func() { c.switchTab(8) }),
-		widget.NewButton("ADB Test", func() { c.switchTab(9) }),
-		widget.NewButton("Routines", func() { c.switchTab(10) }),
-		widget.NewButton("Database", func() { c.switchTab(11) }),
+		widget.NewButton("Orchestration", func() { c.switchTab(3) }),
+		widget.NewButton("Account Pools", func() { c.switchTab(4) }),
+		widget.NewButton("Configuration", func() { c.switchTab(5) }),
+		widget.NewButton("Event Log", func() { c.switchTab(6) }),
+		widget.NewButton("Accounts", func() { c.switchTab(7) }),
+		widget.NewButton("Results", func() { c.switchTab(8) }),
+		widget.NewButton("Controls", func() { c.switchTab(9) }),
+		widget.NewButton("ADB Test", func() { c.switchTab(10) }),
+		widget.NewButton("Routines", func() { c.switchTab(11) }),
+		widget.NewButton("Database", func() { c.switchTab(12) }),
 	)
 
 	// Create database tab with nested tabs (after database tabs are initialized)
 	c.dbTabContainer = c.buildDatabaseTab()
 
+	// Build emulator instances content (or placeholder if nil)
+	var emulatorInstancesContent fyne.CanvasObject
+	if c.emulatorInstancesTab != nil {
+		emulatorInstancesContent = c.emulatorInstancesTab.Build()
+	} else {
+		emulatorInstancesContent = container.NewCenter(
+			widget.NewLabel("Emulator Instances requires database connection"),
+		)
+	}
+
+	// Build orchestration tab content (or placeholder if nil)
+	var orchestrationContent fyne.CanvasObject
+	if c.orchestrationTab != nil {
+		orchestrationContent = c.orchestrationTab.Build()
+	} else {
+		orchestrationContent = container.NewCenter(
+			widget.NewLabel("Orchestration requires database connection"),
+		)
+	}
+
 	// Build account pools content (or placeholder if nil)
 	var accountPoolsContent fyne.CanvasObject
 	if c.accountPoolsTab != nil {
-		accountPoolsContent = c.accountPoolsTab.Content()
+		accountPoolsContent = c.accountPoolsTab.Build()
 	} else {
 		accountPoolsContent = container.NewCenter(
 			widget.NewLabel("Account Pools requires database connection"),
@@ -245,9 +301,10 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 
 	// Create content area (will switch based on selected tab)
 	c.contentArea = container.NewStack(
-		c.dashboard.Build(),
+		emulatorInstancesContent,
 		c.botLauncherTab.Build(),
 		c.managerGroupsTab.Build(),
+		orchestrationContent,
 		accountPoolsContent,
 		c.configTab.Build(),
 		c.logTab.Build(),
@@ -259,7 +316,7 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 		c.dbTabContainer,
 	)
 
-	// Initial state: show dashboard
+	// Initial state: show emulator instances
 	c.showTab(0, c.contentArea)
 
 	// Main layout: tabs on top, content below
@@ -617,4 +674,9 @@ func (c *Controller) CreateEmulatorManager() *emulator.Manager {
 	}
 
 	return emulator.NewManager(cfg.FolderPath, adbPath)
+}
+
+// GetMuMuManager returns the shared MuMu manager
+func (c *Controller) GetMuMuManager() *emulator.MuMuManager {
+	return c.mumuManager
 }

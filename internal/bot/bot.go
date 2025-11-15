@@ -550,7 +550,7 @@ func (ca configAdapter) Actions() actions.ActionsConfig {
 var _ actions.ConfigInterface = configAdapter{}
 
 // executeRecoveryAction handles automatic recovery based on health check failures
-func (b *Bot) executeRecoveryAction(reason string, err error) {
+func (b *Bot) executeRecoveryAction(reason string, _ error) {
 	// Map reason to recovery action
 	var action RecoveryAction
 	switch reason {
