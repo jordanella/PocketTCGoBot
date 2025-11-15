@@ -517,14 +517,22 @@ func (t *AccountPoolsTabV2) updateInstanceDropdown(dropdown *widget.Select) {
 
 func (t *AccountPoolsTabV2) markDirty() {
 	t.isDirty = true
-	t.saveBtn.Enable()
-	t.discardBtn.Enable()
+	if t.saveBtn != nil {
+		t.saveBtn.Enable()
+	}
+	if t.discardBtn != nil {
+		t.discardBtn.Enable()
+	}
 }
 
 func (t *AccountPoolsTabV2) clearDirty() {
 	t.isDirty = false
-	t.saveBtn.Disable()
-	t.discardBtn.Disable()
+	if t.saveBtn != nil {
+		t.saveBtn.Disable()
+	}
+	if t.discardBtn != nil {
+		t.discardBtn.Disable()
+	}
 }
 
 // handleNewPool creates a new pool
