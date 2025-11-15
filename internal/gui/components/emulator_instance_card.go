@@ -45,18 +45,18 @@ type EmulatorInstanceCardV2 struct {
 	callbacks EmulatorInstanceCardCallbacks
 
 	// UI elements that need dynamic updates
-	container        *fyne.Container
-	nameText         *canvas.Text
-	accountText      *canvas.Text
-	statusText       *canvas.Text
-	groupsRow        *fyne.Container
-	buttonRow        *fyne.Container
-	pauseBtn         *widget.Button
-	stopBtn          *widget.Button
-	abortBtn         *widget.Button
-	shutdownBtn      *widget.Button
-	quickStartBtn    *widget.Button
-	launchBtn        *widget.Button
+	container     *fyne.Container
+	nameText      *canvas.Text
+	accountText   *canvas.Text
+	statusText    *canvas.Text
+	groupsRow     *fyne.Container
+	buttonRow     *fyne.Container
+	pauseBtn      *widget.Button
+	stopBtn       *widget.Button
+	abortBtn      *widget.Button
+	shutdownBtn   *widget.Button
+	quickStartBtn *widget.Button
+	launchBtn     *widget.Button
 }
 
 // NewEmulatorInstanceCardV2 creates a new emulator instance card
@@ -154,55 +154,57 @@ func (c *EmulatorInstanceCardV2) build() *fyne.Container {
 
 // UpdateFromState refreshes the card based on current state
 func (c *EmulatorInstanceCardV2) UpdateFromState() {
-	// Update header
-	c.nameText.Text = fmt.Sprintf("Index %d", c.instanceID)
-	c.nameText.Refresh()
+	fyne.Do(func() {
+		// Update header
+		c.nameText.Text = fmt.Sprintf("Index %d", c.instanceID)
+		c.nameText.Refresh()
 
-	// Update account info
-	if c.accountName != "" {
-		elapsed := time.Since(c.injectionTime)
-		c.accountText.Text = fmt.Sprintf("Account %s since %s", c.accountName, formatDurationCompact(elapsed))
-	} else {
-		c.accountText.Text = "No account injected"
-	}
-	c.accountText.Refresh()
+		// Update account info
+		if c.accountName != "" {
+			elapsed := time.Since(c.injectionTime)
+			c.accountText.Text = fmt.Sprintf("Account %s since %s", c.accountName, formatDurationCompact(elapsed))
+		} else {
+			c.accountText.Text = "No account injected"
+		}
+		c.accountText.Refresh()
 
-	// Update buttons and status based on state
-	c.buttonRow.Objects = nil
-	switch c.state {
-	case InstanceStateActive:
-		// Active: show Pause, Stop, Abort, Shutdown
-		c.buttonRow.Add(c.pauseBtn)
-		c.buttonRow.Add(c.stopBtn)
-		c.buttonRow.Add(c.abortBtn)
-		c.buttonRow.Add(c.shutdownBtn)
+		// Update buttons and status based on state
+		c.buttonRow.Objects = nil
+		switch c.state {
+		case InstanceStateActive:
+			// Active: show Pause, Stop, Abort, Shutdown
+			c.buttonRow.Add(c.pauseBtn)
+			c.buttonRow.Add(c.stopBtn)
+			c.buttonRow.Add(c.abortBtn)
+			c.buttonRow.Add(c.shutdownBtn)
 
-		// Show status
-		c.statusText.Text = c.routineStatus
-		c.statusText.Refresh()
-		c.groupsRow.Hide()
+			// Show status
+			c.statusText.Text = c.routineStatus
+			c.statusText.Refresh()
+			c.groupsRow.Hide()
 
-	case InstanceStateIdle:
-		// Idle: show Quick Start, Shutdown
-		c.buttonRow.Add(c.quickStartBtn)
-		c.buttonRow.Add(c.shutdownBtn)
+		case InstanceStateIdle:
+			// Idle: show Quick Start, Shutdown
+			c.buttonRow.Add(c.quickStartBtn)
+			c.buttonRow.Add(c.shutdownBtn)
 
-		// Show associated groups
-		c.statusText.Hide()
-		c.groupsRow.Show()
-		c.updateGroupsRow()
+			// Show associated groups
+			c.statusText.Hide()
+			c.groupsRow.Show()
+			c.updateGroupsRow()
 
-	case InstanceStateInactive:
-		// Inactive: show Quick Start, Launch
-		c.buttonRow.Add(c.quickStartBtn)
-		c.buttonRow.Add(c.launchBtn)
+		case InstanceStateInactive:
+			// Inactive: show Quick Start, Launch
+			c.buttonRow.Add(c.quickStartBtn)
+			c.buttonRow.Add(c.launchBtn)
 
-		// Show associated groups
-		c.statusText.Hide()
-		c.groupsRow.Show()
-		c.updateGroupsRow()
-	}
-	c.buttonRow.Refresh()
+			// Show associated groups
+			c.statusText.Hide()
+			c.groupsRow.Show()
+			c.updateGroupsRow()
+		}
+		c.buttonRow.Refresh()
+	})
 }
 
 // updateGroupsRow rebuilds the groups row with chips

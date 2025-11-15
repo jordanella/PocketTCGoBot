@@ -1,4 +1,4 @@
-pool_name: Test Pool
+pool_name: Test Pool 2
 description: Test pool for orchestration workflow verification
 queries:
     - name: All Available Accounts
@@ -21,5 +21,5 @@ queries:
 config:
     sort_method: packs_desc
     retry_failed: false
-    max_failures: 3
+    max_failures: 2
     refresh_interval: 0

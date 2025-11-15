@@ -874,14 +874,34 @@ func (t *AccountPoolsTabV2) handleRefreshPool() {
 
 // handleAddQuery adds a new query
 func (t *AccountPoolsTabV2) handleAddQuery() {
-	dialog.ShowInformation("Add Query", "Query builder UI not yet implemented", t.window)
-	// TODO: Implement query builder dialog
+	t.showQueryBuilder(nil, func(query accountpool.QuerySource) {
+		t.queriesDataMu.Lock()
+		t.queriesData = append(t.queriesData, query)
+		t.queriesDataMu.Unlock()
+
+		t.markDirty()
+		fyne.Do(func() { t.queriesList.Refresh() })
+	})
 }
 
 // handleEditQuery edits an existing query
 func (t *AccountPoolsTabV2) handleEditQuery(id int) {
-	dialog.ShowInformation("Edit Query", fmt.Sprintf("Edit query %d not yet implemented", id), t.window)
-	// TODO: Implement query builder dialog
+	t.queriesDataMu.RLock()
+	if id >= len(t.queriesData) {
+		t.queriesDataMu.RUnlock()
+		return
+	}
+	existingQuery := t.queriesData[id]
+	t.queriesDataMu.RUnlock()
+
+	t.showQueryBuilder(&existingQuery, func(query accountpool.QuerySource) {
+		t.queriesDataMu.Lock()
+		t.queriesData[id] = query
+		t.queriesDataMu.Unlock()
+
+		t.markDirty()
+		fyne.Do(func() { t.queriesList.Refresh() })
+	})
 }
 
 // handleDeleteQuery deletes a query
@@ -1052,4 +1072,214 @@ func (t *AccountPoolsTabV2) updateStatusLabel() {
 // Stop stops the tab (cleanup)
 func (t *AccountPoolsTabV2) Stop() {
 	close(t.stopRefresh)
+}
+
+// === QUERY BUILDER DIALOG ===
+
+// showQueryBuilder shows a visual query builder dialog
+func (t *AccountPoolsTabV2) showQueryBuilder(existingQuery *accountpool.QuerySource, onSave func(accountpool.QuerySource)) {
+	// Available database columns
+	columns := []string{
+		"packs_opened",
+		"shinedust",
+		"hourglasses",
+		"pokegold",
+		"pack_points",
+		"wonder_picks_done",
+		"account_level",
+		"last_used_at",
+		"is_active",
+		"is_banned",
+	}
+
+	comparators := []string{"=", "!=", ">", ">=", "<", "<=", "LIKE"}
+	sortDirections := []string{"asc", "desc"}
+
+	// Query state
+	var queryName string
+	var filters []accountpool.QueryFilter
+	var sorts []accountpool.SortOrder
+	var limit int
+
+	// Pre-populate if editing
+	if existingQuery != nil {
+		queryName = existingQuery.Name
+		filters = make([]accountpool.QueryFilter, len(existingQuery.Filters))
+		copy(filters, existingQuery.Filters)
+		sorts = make([]accountpool.SortOrder, len(existingQuery.Sort))
+		copy(sorts, existingQuery.Sort)
+		limit = existingQuery.Limit
+	}
+
+	// === NAME ===
+	nameEntry := widget.NewEntry()
+	nameEntry.SetText(queryName)
+	nameEntry.SetPlaceHolder("Query name...")
+
+	// === FILTERS ===
+	filtersContainer := container.NewVBox()
+
+	// Declare updateFiltersUI before it's used
+	var updateFiltersUI func()
+	updateFiltersUI = func() {
+		filtersContainer.Objects = nil
+		for i := range filters {
+			idx := i // Capture for closure
+			filter := &filters[idx]
+
+			columnSelect := widget.NewSelect(columns, func(selected string) {
+				filter.Column = selected
+			})
+			columnSelect.SetSelected(filter.Column)
+
+			comparatorSelect := widget.NewSelect(comparators, func(selected string) {
+				filter.Comparator = selected
+			})
+			comparatorSelect.SetSelected(filter.Comparator)
+
+			valueEntry := widget.NewEntry()
+			valueEntry.SetText(filter.Value)
+			valueEntry.OnChanged = func(value string) {
+				filter.Value = value
+			}
+
+			removeBtn := widget.NewButton("Remove", func() {
+				filters = append(filters[:idx], filters[idx+1:]...)
+				updateFiltersUI()
+			})
+
+			filterRow := container.NewHBox(
+				columnSelect,
+				comparatorSelect,
+				valueEntry,
+				removeBtn,
+			)
+			filtersContainer.Add(filterRow)
+		}
+		filtersContainer.Refresh()
+	}
+
+	addFilterBtn := components.SecondaryButton("+ Add Filter", func() {
+		filters = append(filters, accountpool.QueryFilter{
+			Column:     "packs_opened",
+			Comparator: ">=",
+			Value:      "0",
+		})
+		updateFiltersUI()
+	})
+
+	updateFiltersUI()
+
+	// === SORTING ===
+	sortsContainer := container.NewVBox()
+
+	// Declare updateSortsUI before it's used
+	var updateSortsUI func()
+	updateSortsUI = func() {
+		sortsContainer.Objects = nil
+		for i := range sorts {
+			idx := i // Capture for closure
+			sort := &sorts[idx]
+
+			columnSelect := widget.NewSelect(columns, func(selected string) {
+				sort.Column = selected
+			})
+			columnSelect.SetSelected(sort.Column)
+
+			directionSelect := widget.NewSelect(sortDirections, func(selected string) {
+				sort.Direction = selected
+			})
+			directionSelect.SetSelected(sort.Direction)
+
+			removeBtn := widget.NewButton("Remove", func() {
+				sorts = append(sorts[:idx], sorts[idx+1:]...)
+				updateSortsUI()
+			})
+
+			sortRow := container.NewHBox(
+				columnSelect,
+				directionSelect,
+				removeBtn,
+			)
+			sortsContainer.Add(sortRow)
+		}
+		sortsContainer.Refresh()
+	}
+
+	addSortBtn := components.SecondaryButton("+ Add Sort", func() {
+		sorts = append(sorts, accountpool.SortOrder{
+			Column:    "packs_opened",
+			Direction: "desc",
+		})
+		updateSortsUI()
+	})
+
+	updateSortsUI()
+
+	// === LIMIT ===
+	limitEntry := widget.NewEntry()
+	limitEntry.SetText(fmt.Sprintf("%d", limit))
+	limitEntry.SetPlaceHolder("0 = no limit")
+
+	// === DIALOG CONTENT ===
+	content := container.NewVBox(
+		components.Subheading("Query Name"),
+		nameEntry,
+		widget.NewSeparator(),
+		components.Subheading("Filters (AND combined)"),
+		filtersContainer,
+		addFilterBtn,
+		widget.NewSeparator(),
+		components.Subheading("Sorting"),
+		sortsContainer,
+		addSortBtn,
+		widget.NewSeparator(),
+		components.Subheading("Limit"),
+		limitEntry,
+	)
+
+	scroll := container.NewVScroll(content)
+	scroll.SetMinSize(fyne.NewSize(600, 400))
+
+	// === DIALOG ===
+	dlg := dialog.NewCustomConfirm("Query Builder", "Save", "Cancel",
+		scroll,
+		func(save bool) {
+			if !save {
+				return
+			}
+
+			// Validate
+			name := strings.TrimSpace(nameEntry.Text)
+			if name == "" {
+				dialog.ShowError(fmt.Errorf("query name cannot be empty"), t.window)
+				return
+			}
+
+			// Parse limit
+			parsedLimit := 0
+			if limitEntry.Text != "" {
+				var err error
+				parsedLimit, err = strconv.Atoi(limitEntry.Text)
+				if err != nil {
+					dialog.ShowError(fmt.Errorf("invalid limit value: %w", err), t.window)
+					return
+				}
+			}
+
+			// Build query
+			query := accountpool.QuerySource{
+				Name:    name,
+				Filters: filters,
+				Sort:    sorts,
+				Limit:   parsedLimit,
+			}
+
+			onSave(query)
+		},
+		t.window,
+	)
+
+	dlg.Resize(fyne.NewSize(700, 500))
+	dlg.Show()
 }
