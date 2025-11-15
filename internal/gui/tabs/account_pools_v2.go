@@ -1078,21 +1078,45 @@ func (t *AccountPoolsTabV2) Stop() {
 
 // showQueryBuilder shows a visual query builder dialog
 func (t *AccountPoolsTabV2) showQueryBuilder(existingQuery *accountpool.QuerySource, onSave func(accountpool.QuerySource)) {
-	// Available database columns
-	columns := []string{
-		"packs_opened",
-		"shinedust",
-		"hourglasses",
-		"pokegold",
-		"pack_points",
-		"wonder_picks_done",
-		"account_level",
-		"last_used_at",
-		"is_active",
-		"is_banned",
+	// Column definitions with types
+	type columnDef struct {
+		name        string
+		comparators []string
 	}
 
-	comparators := []string{"=", "!=", ">", ">=", "<", "<=", "LIKE"}
+	numericComparators := []string{"=", "!=", ">", ">=", "<", "<="}
+	booleanComparators := []string{"= 1 (TRUE)", "= 0 (FALSE)"}
+	timestampComparators := []string{"=", "!=", ">", ">=", "<", "<="}
+
+	columnDefs := []columnDef{
+		{"packs_opened", numericComparators},
+		{"shinedust", numericComparators},
+		{"hourglasses", numericComparators},
+		{"pokegold", numericComparators},
+		{"pack_points", numericComparators},
+		{"wonder_picks_done", numericComparators},
+		{"account_level", numericComparators},
+		{"last_used_at", timestampComparators},
+		{"is_active", booleanComparators},
+		{"is_banned", booleanComparators},
+	}
+
+	// Extract column names for dropdown
+	columns := make([]string, len(columnDefs))
+	for i, def := range columnDefs {
+		columns[i] = def.name
+	}
+
+	// Helper to get comparators for a column
+	getComparatorsForColumn := func(column string) []string {
+		for _, def := range columnDefs {
+			if def.name == column {
+				return def.comparators
+			}
+		}
+		return numericComparators // Default
+	}
+
 	sortDirections := []string{"asc", "desc"}
 
 	// Query state
@@ -1127,20 +1151,55 @@ func (t *AccountPoolsTabV2) showQueryBuilder(existingQuery *accountpool.QuerySou
 			idx := i // Capture for closure
 			filter := &filters[idx]
 
-			columnSelect := widget.NewSelect(columns, func(selected string) {
-				filter.Column = selected
+			comparatorSelect := widget.NewSelect([]string{}, func(selected string) {
+				// Extract actual comparator from display string (e.g., "= 1 (TRUE)" -> "=")
+				parts := strings.Split(selected, " ")
+				if len(parts) > 0 {
+					filter.Comparator = parts[0]
+					// For boolean fields, set value from selection
+					if strings.Contains(selected, "TRUE") {
+						filter.Value = "1"
+					} else if strings.Contains(selected, "FALSE") {
+						filter.Value = "0"
+					}
+				} else {
+					filter.Comparator = selected
+				}
 			})
-			columnSelect.SetSelected(filter.Column)
-
-			comparatorSelect := widget.NewSelect(comparators, func(selected string) {
-				filter.Comparator = selected
-			})
-			comparatorSelect.SetSelected(filter.Comparator)
 
 			valueEntry := widget.NewEntry()
 			valueEntry.SetText(filter.Value)
 			valueEntry.OnChanged = func(value string) {
 				filter.Value = value
+			}
+
+			columnSelect := widget.NewSelect(columns, func(selected string) {
+				filter.Column = selected
+				// Update comparators based on column type
+				comparators := getComparatorsForColumn(selected)
+				comparatorSelect.Options = comparators
+				if len(comparators) > 0 {
+					comparatorSelect.SetSelected(comparators[0])
+				}
+				comparatorSelect.Refresh()
+
+				// Hide value entry for boolean fields (value set by comparator)
+				if selected == "is_active" || selected == "is_banned" {
+					valueEntry.Hide()
+				} else {
+					valueEntry.Show()
+				}
+			})
+			columnSelect.SetSelected(filter.Column)
+
+			// Set initial comparators
+			comparators := getComparatorsForColumn(filter.Column)
+			comparatorSelect.Options = comparators
+			comparatorSelect.SetSelected(filter.Comparator)
+
+			// Hide value entry for boolean fields
+			if filter.Column == "is_active" || filter.Column == "is_banned" {
+				valueEntry.Hide()
 			}
 
 			removeBtn := widget.NewButton("Remove", func() {
@@ -1181,6 +1240,9 @@ func (t *AccountPoolsTabV2) showQueryBuilder(existingQuery *accountpool.QuerySou
 			idx := i // Capture for closure
 			sort := &sorts[idx]
 
+			// Order number label
+			orderLabel := widget.NewLabel(fmt.Sprintf("%d.", idx+1))
+
 			columnSelect := widget.NewSelect(columns, func(selected string) {
 				sort.Column = selected
 			})
@@ -1191,14 +1253,40 @@ func (t *AccountPoolsTabV2) showQueryBuilder(existingQuery *accountpool.QuerySou
 			})
 			directionSelect.SetSelected(sort.Direction)
 
+			// Reorder buttons
+			moveUpBtn := widget.NewButton("↑", func() {
+				if idx > 0 {
+					sorts[idx], sorts[idx-1] = sorts[idx-1], sorts[idx]
+					updateSortsUI()
+				}
+			})
+			moveUpBtn.Importance = widget.LowImportance
+			if idx == 0 {
+				moveUpBtn.Disable()
+			}
+
+			moveDownBtn := widget.NewButton("↓", func() {
+				if idx < len(sorts)-1 {
+					sorts[idx], sorts[idx+1] = sorts[idx+1], sorts[idx]
+					updateSortsUI()
+				}
+			})
+			moveDownBtn.Importance = widget.LowImportance
+			if idx == len(sorts)-1 {
+				moveDownBtn.Disable()
+			}
+
 			removeBtn := widget.NewButton("Remove", func() {
 				sorts = append(sorts[:idx], sorts[idx+1:]...)
 				updateSortsUI()
 			})
 
 			sortRow := container.NewHBox(
+				orderLabel,
 				columnSelect,
 				directionSelect,
+				moveUpBtn,
+				moveDownBtn,
 				removeBtn,
 			)
 			sortsContainer.Add(sortRow)
