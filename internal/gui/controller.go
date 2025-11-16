@@ -38,13 +38,11 @@ type Controller struct {
 	configTab            *ConfigTab
 	logTab               *LogTab
 	accountTab           *AccountTab
-	resultsTab           *ResultsTab
 	controlTab           *ControlTab
 	adbTestTab           *ADBTestTab
 	routinesTab          *RoutinesEnhancedTab
-	botLauncherTab       *BotLauncherTab
 	managerGroupsTab     *ManagerGroupsTab
-	orchestrationTab     *tabs.OrchestrationTabV2
+	orchestrationTab     *tabs.OrchestrationTabV3
 	accountPoolsTab      *tabs.AccountPoolsTabV2
 
 	// Business logic - Registries (MVC: Model layer)
@@ -99,7 +97,6 @@ func NewController(cfg *bot.Config, app fyne.App, window fyne.Window) *Controlle
 
 	ctrl.configTab = NewConfigTab(ctrl)
 	ctrl.accountTab = NewAccountTab(ctrl)
-	ctrl.resultsTab = NewResultsTab(ctrl)
 	ctrl.controlTab = NewControlTab(ctrl)
 	ctrl.adbTestTab = NewADBTestTab(ctrl)
 
@@ -112,7 +109,6 @@ func NewController(cfg *bot.Config, app fyne.App, window fyne.Window) *Controlle
 	)
 
 	ctrl.routinesTab = NewRoutinesEnhancedTab(ctrl, manager)
-	ctrl.botLauncherTab = NewBotLauncherTab(ctrl)
 	ctrl.managerGroupsTab = NewManagerGroupsTab(ctrl)
 
 	// Initialize database after log tab is ready
@@ -229,7 +225,8 @@ func (c *Controller) initializeDatabase() {
 		}
 
 		// Initialize orchestration tab
-		c.orchestrationTab = tabs.NewOrchestrationTabV2(c.orchestrator, c.window)
+		emulatorManager = c.CreateEmulatorManager()
+		c.orchestrationTab = tabs.NewOrchestrationTabV3(c.orchestrator, emulatorManager, c.window)
 
 		// Initialize emulator instances tab
 		c.emulatorInstancesTab = tabs.NewEmulatorInstancesTab(c.orchestrator, c.mumuManager, c.window)
@@ -252,18 +249,16 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 	// Create tab buttons (horizontal navigation)
 	tabButtons := container.NewHBox(
 		widget.NewButton("Dashboard", func() { c.switchTab(0) }),
-		widget.NewButton("Bot Launcher", func() { c.switchTab(1) }),
-		widget.NewButton("Manager Groups", func() { c.switchTab(2) }),
-		widget.NewButton("Orchestration", func() { c.switchTab(3) }),
-		widget.NewButton("Account Pools", func() { c.switchTab(4) }),
-		widget.NewButton("Configuration", func() { c.switchTab(5) }),
-		widget.NewButton("Event Log", func() { c.switchTab(6) }),
-		widget.NewButton("Accounts", func() { c.switchTab(7) }),
-		widget.NewButton("Results", func() { c.switchTab(8) }),
-		widget.NewButton("Controls", func() { c.switchTab(9) }),
-		widget.NewButton("ADB Test", func() { c.switchTab(10) }),
-		widget.NewButton("Routines", func() { c.switchTab(11) }),
-		widget.NewButton("Database", func() { c.switchTab(12) }),
+		widget.NewButton("Manager Groups", func() { c.switchTab(1) }),
+		widget.NewButton("Orchestration", func() { c.switchTab(2) }),
+		widget.NewButton("Account Pools", func() { c.switchTab(3) }),
+		widget.NewButton("Configuration", func() { c.switchTab(4) }),
+		widget.NewButton("Event Log", func() { c.switchTab(5) }),
+		widget.NewButton("Accounts", func() { c.switchTab(6) }),
+		widget.NewButton("Controls", func() { c.switchTab(7) }),
+		widget.NewButton("ADB Test", func() { c.switchTab(8) }),
+		widget.NewButton("Routines", func() { c.switchTab(9) }),
+		widget.NewButton("Database", func() { c.switchTab(10) }),
 	)
 
 	// Create database tab with nested tabs (after database tabs are initialized)
@@ -302,14 +297,12 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 	// Create content area (will switch based on selected tab)
 	c.contentArea = container.NewStack(
 		emulatorInstancesContent,
-		c.botLauncherTab.Build(),
 		c.managerGroupsTab.Build(),
 		orchestrationContent,
 		accountPoolsContent,
 		c.configTab.Build(),
 		c.logTab.Build(),
 		c.accountTab.Build(),
-		c.resultsTab.Build(),
 		c.controlTab.Build(),
 		c.adbTestTab.Build(),
 		c.routinesTab.Build(),

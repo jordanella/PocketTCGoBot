@@ -3,21 +3,12 @@ description: Test pool for orchestration workflow verification
 queries:
     - name: All Available Accounts
       filters:
-        - column: pack_count
-          comparator: ""
-          value: "0"
-      sort:
-        - column: pack_count
-          direction: ""
-    - name: all accounts
-      filters:
         - column: shinedust
-          comparator: '!='
+          comparator: =
           value: "12"
       sort:
-        - column: packs_opened
+        - column: pokegold
           direction: desc
-      limit: 100
 config:
     sort_method: packs_desc
     retry_failed: false

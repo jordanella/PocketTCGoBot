@@ -54,8 +54,8 @@ type BotGroup struct {
 	OrchestrationID string // UUID for this execution context
 
 	// Bot management (bots now managed directly by BotGroup)
-	bots     map[int]*Bot // Active bot instances (key = instance ID)
-	botsMu   sync.RWMutex
+	bots   map[int]*Bot // Active bot instances (key = instance ID)
+	botsMu sync.RWMutex
 
 	// Reference to orchestrator for registry access
 	orchestrator *Orchestrator
@@ -65,9 +65,9 @@ type BotGroup struct {
 	RoutineConfig map[string]string // Variable overrides
 
 	// Emulator instance pool
-	AvailableInstances []int              // Pool of instances this group can use
-	RequestedBotCount  int                // How many bots user wants running
-	ActiveBots         map[int]*BotInfo   // Currently running bots (key = instance ID)
+	AvailableInstances []int            // Pool of instances this group can use
+	RequestedBotCount  int              // How many bots user wants running
+	ActiveBots         map[int]*BotInfo // Currently running bots (key = instance ID)
 	activeBotsMu       sync.RWMutex
 
 	// Account pool (optional - can be set by name or direct instance)
@@ -111,12 +111,12 @@ const (
 
 // InstanceAssignment tracks which group/bot is using an emulator instance
 type InstanceAssignment struct {
-	InstanceID   int
-	GroupName    string
-	BotInstance  int
-	AssignedAt   time.Time
-	IsRunning    bool
-	EmulatorPID  int // Process ID of emulator if we launched it
+	InstanceID  int
+	GroupName   string
+	BotInstance int
+	AssignedAt  time.Time
+	IsRunning   bool
+	EmulatorPID int // Process ID of emulator if we launched it
 }
 
 // ConflictResolution defines how to handle instance conflicts
@@ -124,9 +124,9 @@ type ConflictResolution int
 
 const (
 	ConflictResolutionAsk    ConflictResolution = iota // Ask user what to do
-	ConflictResolutionCancel                            // Cancel the other group
-	ConflictResolutionSkip                              // Skip this instance
-	ConflictResolutionAbort                             // Abort launch
+	ConflictResolutionCancel                           // Cancel the other group
+	ConflictResolutionSkip                             // Skip this instance
+	ConflictResolutionAbort                            // Abort launch
 )
 
 // LaunchOptions configures how a group is launched
@@ -163,17 +163,17 @@ func NewOrchestrator(
 	}
 
 	return &Orchestrator{
-		config:             config,
-		templateRegistry:   templateRegistry,
-		routineRegistry:    routineRegistry,
-		emulatorManager:    emulatorManager,
-		poolManager:        poolManager,
-		db:                 db,
-		groupDefinitions:   make(map[string]*BotGroupDefinition),
-		activeGroups:       make(map[string]*BotGroup),
-		instanceRegistry:   make(map[int]*InstanceAssignment),
-		staggerDelay:       5 * time.Second, // Default 5 second stagger
-		groupConfigDir:     groupConfigDir,
+		config:           config,
+		templateRegistry: templateRegistry,
+		routineRegistry:  routineRegistry,
+		emulatorManager:  emulatorManager,
+		poolManager:      poolManager,
+		db:               db,
+		groupDefinitions: make(map[string]*BotGroupDefinition),
+		activeGroups:     make(map[string]*BotGroup),
+		instanceRegistry: make(map[int]*InstanceAssignment),
+		staggerDelay:     5 * time.Second, // Default 5 second stagger
+		groupConfigDir:   groupConfigDir,
 	}
 }
 

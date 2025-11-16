@@ -1,7 +1,0 @@
-pool_name: Example
-description: This is a test.
-config:
-    sort_method: packs_desc
-    retry_failed: false
-    max_failures: 3
-    refresh_interval: 0
