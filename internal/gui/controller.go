@@ -207,6 +207,11 @@ func (c *Controller) initializeDatabase() {
 		xmlStorageDir := "account_xmls" // Global XML storage directory
 		c.poolManager = accountpool.NewPoolManager(poolsDir, c.db.Conn(), xmlStorageDir)
 
+		// Discover existing pools from disk
+		if err := c.poolManager.DiscoverPools(); err != nil {
+			c.logTab.AddLog(LogLevelWarn, 0, fmt.Sprintf("Failed to discover pools: %v", err))
+		}
+
 		// Initialize orchestrator with database connection (need emulator manager for pools tab)
 		emulatorManager := c.CreateEmulatorManager()
 		c.accountPoolsTab = tabs.NewAccountPoolsTabV2(c.poolManager, c.db.Conn(), emulatorManager, c.window)
@@ -249,16 +254,15 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 	// Create tab buttons (horizontal navigation)
 	tabButtons := container.NewHBox(
 		widget.NewButton("Dashboard", func() { c.switchTab(0) }),
-		widget.NewButton("Manager Groups", func() { c.switchTab(1) }),
-		widget.NewButton("Orchestration", func() { c.switchTab(2) }),
-		widget.NewButton("Account Pools", func() { c.switchTab(3) }),
-		widget.NewButton("Configuration", func() { c.switchTab(4) }),
-		widget.NewButton("Event Log", func() { c.switchTab(5) }),
-		widget.NewButton("Accounts", func() { c.switchTab(6) }),
-		widget.NewButton("Controls", func() { c.switchTab(7) }),
-		widget.NewButton("ADB Test", func() { c.switchTab(8) }),
-		widget.NewButton("Routines", func() { c.switchTab(9) }),
-		widget.NewButton("Database", func() { c.switchTab(10) }),
+		widget.NewButton("Orchestration", func() { c.switchTab(1) }),
+		widget.NewButton("Account Pools", func() { c.switchTab(2) }),
+		widget.NewButton("Configuration", func() { c.switchTab(3) }),
+		widget.NewButton("Event Log", func() { c.switchTab(4) }),
+		widget.NewButton("Accounts", func() { c.switchTab(5) }),
+		widget.NewButton("Controls", func() { c.switchTab(6) }),
+		widget.NewButton("ADB Test", func() { c.switchTab(7) }),
+		widget.NewButton("Routines", func() { c.switchTab(8) }),
+		widget.NewButton("Database", func() { c.switchTab(9) }),
 	)
 
 	// Create database tab with nested tabs (after database tabs are initialized)
@@ -297,7 +301,6 @@ func (c *Controller) BuildUI() fyne.CanvasObject {
 	// Create content area (will switch based on selected tab)
 	c.contentArea = container.NewStack(
 		emulatorInstancesContent,
-		c.managerGroupsTab.Build(),
 		orchestrationContent,
 		accountPoolsContent,
 		c.configTab.Build(),
