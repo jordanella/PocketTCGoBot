@@ -109,6 +109,11 @@ func (m *Manager) GetAllInstances() []*Instance {
 	return instances
 }
 
+// GetMuMuManager returns the underlying MuMu manager
+func (m *Manager) GetMuMuManager() *MuMuManager {
+	return m.mumuMgr
+}
+
 // PositionInstance positions a specific instance window
 func (m *Manager) PositionInstance(index int, config *WindowConfig) error {
 	inst, exists := m.instances[index]

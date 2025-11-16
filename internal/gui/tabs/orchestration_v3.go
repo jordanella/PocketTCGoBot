@@ -1104,24 +1104,48 @@ func (t *OrchestrationTabV3) updateInstanceDropdown() {
 		return
 	}
 
-	if err := t.emulatorMgr.DiscoverInstances(); err != nil {
-		fmt.Printf("Warning: Failed to discover instances: %v\n", err)
+	// Get MuMu manager to access all configured instances (not just running ones)
+	mumuMgr := t.emulatorMgr.GetMuMuManager()
+	if mumuMgr == nil {
+		t.addInstanceDropdown.Options = []string{"No MuMu manager"}
+		return
 	}
 
-	instances := t.emulatorMgr.GetAllInstances()
-	options := make([]string, 0, len(instances))
+	// Get all instance configs from disk
+	configs, err := mumuMgr.GetAllInstanceConfigs()
+	if err != nil {
+		fmt.Printf("Warning: Failed to get instance configs: %v\n", err)
+		t.addInstanceDropdown.Options = []string{"No instances configured"}
+		return
+	}
 
-	for _, inst := range instances {
-		if inst.MuMu != nil {
-			label := fmt.Sprintf("Instance %d", inst.MuMu.Index)
-			if inst.MuMu.WindowTitle != "" {
-				label = fmt.Sprintf("Instance %d (%s)", inst.MuMu.Index, inst.MuMu.WindowTitle)
+	// Build options list from all configured instances
+	options := make([]string, 0, len(configs))
+	for index, config := range configs {
+		label := fmt.Sprintf("Instance %d", index)
+		if config.PlayerName != "" {
+			label = fmt.Sprintf("Instance %d (%s)", index, config.PlayerName)
+		}
+		options = append(options, label)
+	}
+
+	// Sort by instance number
+	// (configs map is already indexed by instance number)
+	sortedOptions := make([]string, 0, len(options))
+	for i := 0; i < 100; i++ { // Reasonable upper limit
+		for index := range configs {
+			if index == i {
+				label := fmt.Sprintf("Instance %d", index)
+				if configs[index].PlayerName != "" {
+					label = fmt.Sprintf("Instance %d (%s)", index, configs[index].PlayerName)
+				}
+				sortedOptions = append(sortedOptions, label)
+				break
 			}
-			options = append(options, label)
 		}
 	}
 
-	t.addInstanceDropdown.Options = options
+	t.addInstanceDropdown.Options = sortedOptions
 	fyne.Do(func() {
 		t.addInstanceDropdown.Refresh()
 	})
@@ -1129,9 +1153,21 @@ func (t *OrchestrationTabV3) updateInstanceDropdown() {
 
 // updatePoolDropdown updates the pool dropdown
 func (t *OrchestrationTabV3) updatePoolDropdown() {
-	// TODO: Get pools from pool manager
-	// For now, just set empty
-	t.poolSelect.Options = []string{}
+	if t.orchestrator == nil {
+		t.poolSelect.Options = []string{}
+		return
+	}
+
+	poolManager := t.orchestrator.GetPoolManager()
+	if poolManager == nil {
+		t.poolSelect.Options = []string{}
+		return
+	}
+
+	// Get list of pool names
+	poolNames := poolManager.ListPools()
+	t.poolSelect.Options = poolNames
+	t.poolSelect.Refresh()
 }
 
 // updateStatusLabel updates the status label
