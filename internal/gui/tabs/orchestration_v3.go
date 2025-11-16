@@ -499,6 +499,17 @@ func (t *OrchestrationTabV3) loadGroupDefinitions() {
 	// Load from orchestrator
 	definitions := t.orchestrator.ListGroupDefinitions()
 
+	// Create runtime groups for all definitions that don't have one yet
+	for _, def := range definitions {
+		_, exists := t.orchestrator.GetGroup(def.Name)
+		if !exists {
+			// Create runtime group from definition
+			if _, err := t.orchestrator.CreateGroupFromDefinition(def); err != nil {
+				fmt.Printf("Warning: failed to create runtime group for '%s': %v\n", def.Name, err)
+			}
+		}
+	}
+
 	t.groupsDataMu.Lock()
 	t.groupsData = definitions
 	t.groupsDataMu.Unlock()
@@ -755,6 +766,12 @@ func (t *OrchestrationTabV3) handleNewGroup() {
 				return
 			}
 
+			// Create runtime group in orchestrator
+			if _, err := t.orchestrator.CreateGroupFromDefinition(newGroup); err != nil {
+				dialog.ShowError(fmt.Errorf("failed to create runtime group: %w", err), t.window)
+				return
+			}
+
 			// Add to list
 			t.groupsDataMu.Lock()
 			t.groupsData = append(t.groupsData, newGroup)
@@ -873,6 +890,11 @@ func (t *OrchestrationTabV3) handleSaveChanges() {
 
 	// Handle rename
 	if oldName != name {
+		// Delete old runtime group
+		if err := t.orchestrator.DeleteGroup(oldName); err != nil {
+			fmt.Printf("Warning: failed to delete old runtime group: %v\n", err)
+		}
+		// Delete old definition
 		if err := t.orchestrator.DeleteGroupDefinition(oldName); err != nil {
 			fmt.Printf("Warning: failed to delete old definition: %v\n", err)
 		}
@@ -881,6 +903,21 @@ func (t *OrchestrationTabV3) handleSaveChanges() {
 	// Save definition
 	if err := t.orchestrator.SaveGroupDefinition(t.currentGroup); err != nil {
 		dialog.ShowError(fmt.Errorf("failed to save group: %w", err), t.window)
+		return
+	}
+
+	// Update or create runtime group in orchestrator
+	// First check if it exists
+	_, exists := t.orchestrator.GetGroup(name)
+	if exists {
+		// Delete and recreate to update all properties
+		if err := t.orchestrator.DeleteGroup(name); err != nil {
+			fmt.Printf("Warning: failed to delete existing runtime group: %v\n", err)
+		}
+	}
+	// Create runtime group from updated definition
+	if _, err := t.orchestrator.CreateGroupFromDefinition(t.currentGroup); err != nil {
+		dialog.ShowError(fmt.Errorf("failed to update runtime group: %w", err), t.window)
 		return
 	}
 
