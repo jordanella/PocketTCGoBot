@@ -1,5 +1,5 @@
 pool_name: Test Pool 2
-description: Test pool for orchestration workflow verification
+description: Test pool for orchestration workflow verification and other GUI interaction issues.
 queries:
     - name: All Available Accounts
       filters:

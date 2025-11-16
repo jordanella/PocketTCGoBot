@@ -60,6 +60,14 @@ type OrchestrationTabV3 struct {
 	addInstanceBtn      *widget.Button
 	refreshInstancesBtn *widget.Button
 
+	// Account Pools tab widgets
+	poolsList           *widget.List
+	poolsData           []string
+	poolsDataMu         sync.RWMutex
+	addPoolDropdown     *widget.Select
+	addPoolBtn          *widget.Button
+	refreshPoolsBtn     *widget.Button
+
 	// Launch Options tab widgets
 	validateRoutineCheck   *widget.Check
 	validateTemplatesCheck *widget.Check
@@ -101,6 +109,7 @@ func NewOrchestrationTabV3(orchestrator *bot.Orchestrator, emulatorMgr *emulator
 		selectedIndex: -1,
 		groupsData:    make([]*bot.BotGroupDefinition, 0),
 		instancesData: make([]int, 0),
+		poolsData:     make([]string, 0),
 		statusData:    make([][]string, 0),
 		stopRefresh:   make(chan bool),
 	}
@@ -210,12 +219,14 @@ func (t *OrchestrationTabV3) buildRightPanel() fyne.CanvasObject {
 	// Initialize tabs
 	detailsTab := t.buildDetailsTab()
 	instancesTab := t.buildInstancesTab()
+	poolsTab := t.buildAccountPoolsTab()
 	launchOptionsTab := t.buildLaunchOptionsTab()
 	statusTab := t.buildStatusTab()
 
 	t.tabs = container.NewAppTabs(
 		container.NewTabItem("Details", detailsTab),
 		container.NewTabItem("Instances", instancesTab),
+		container.NewTabItem("Account Pools", poolsTab),
 		container.NewTabItem("Launch Options", launchOptionsTab),
 		container.NewTabItem("Status", statusTab),
 	)
@@ -368,6 +379,80 @@ func (t *OrchestrationTabV3) buildInstancesTab() fyne.CanvasObject {
 		nil,
 		nil,
 		t.instancesList,
+	)
+
+	return content
+}
+
+// buildAccountPoolsTab creates the Account Pools tab
+func (t *OrchestrationTabV3) buildAccountPoolsTab() fyne.CanvasObject {
+	// Pool list
+	t.poolsList = widget.NewList(
+		func() int {
+			t.poolsDataMu.RLock()
+			defer t.poolsDataMu.RUnlock()
+			return len(t.poolsData)
+		},
+		func() fyne.CanvasObject {
+			return container.NewHBox(
+				widget.NewLabel(""),
+				layout.NewSpacer(),
+				widget.NewButtonWithIcon("", theme.DeleteIcon(), nil),
+			)
+		},
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			t.poolsDataMu.RLock()
+			defer t.poolsDataMu.RUnlock()
+
+			if id >= len(t.poolsData) {
+				return
+			}
+
+			poolName := t.poolsData[id]
+			hbox := obj.(*fyne.Container)
+			label := hbox.Objects[0].(*widget.Label)
+			btn := hbox.Objects[2].(*widget.Button)
+
+			label.SetText(poolName)
+			btn.OnTapped = func() {
+				t.handleRemovePool(id)
+			}
+		},
+	)
+
+	// Add pool dropdown
+	t.addPoolDropdown = widget.NewSelect([]string{}, nil)
+	t.addPoolDropdown.PlaceHolder = "Select pool to add"
+
+	t.addPoolBtn = components.PrimaryButton("Add Pool", func() {
+		t.handleAddPoolFromDropdown()
+	})
+
+	t.refreshPoolsBtn = components.SecondaryButton("Refresh Pools", func() {
+		t.updatePoolDropdownList()
+	})
+
+	// Update dropdown
+	t.updatePoolDropdownList()
+
+	addSection := container.NewVBox(
+		widget.NewLabel("Add Account Pool:"),
+		t.addPoolDropdown,
+		container.NewHBox(t.addPoolBtn, t.refreshPoolsBtn),
+	)
+
+	content := container.NewBorder(
+		container.NewVBox(
+			widget.NewLabel("Configured Account Pools:"),
+			widget.NewSeparator(),
+		),
+		container.NewVBox(
+			widget.NewSeparator(),
+			addSection,
+		),
+		nil,
+		nil,
+		t.poolsList,
 	)
 
 	return content
@@ -597,6 +682,21 @@ func (t *OrchestrationTabV3) populateFields() {
 	copy(t.instancesData, t.currentGroup.AvailableInstances)
 	t.instancesDataMu.Unlock()
 	fyne.Do(func() { t.instancesList.Refresh() })
+
+	// Account Pools tab
+	t.poolsDataMu.Lock()
+	// Support both legacy single pool and new multiple pools
+	if len(t.currentGroup.AccountPoolNames) > 0 {
+		t.poolsData = make([]string, len(t.currentGroup.AccountPoolNames))
+		copy(t.poolsData, t.currentGroup.AccountPoolNames)
+	} else if t.currentGroup.AccountPoolName != "" {
+		// Migrate legacy single pool to array
+		t.poolsData = []string{t.currentGroup.AccountPoolName}
+	} else {
+		t.poolsData = []string{}
+	}
+	t.poolsDataMu.Unlock()
+	fyne.Do(func() { t.poolsList.Refresh() })
 
 	// Launch Options tab
 	t.validateRoutineCheck.SetChecked(t.currentGroup.LaunchOptions.ValidateRoutine)
@@ -835,7 +935,18 @@ func (t *OrchestrationTabV3) handleSaveChanges() {
 	t.currentGroup.Description = strings.TrimSpace(t.descEntry.Text)
 	t.currentGroup.RoutineName = routine
 	t.currentGroup.RequestedBotCount = botCount
-	t.currentGroup.AccountPoolName = t.poolSelect.Selected
+
+	// Save account pools (both legacy single and new multiple)
+	t.poolsDataMu.RLock()
+	t.currentGroup.AccountPoolNames = make([]string, len(t.poolsData))
+	copy(t.currentGroup.AccountPoolNames, t.poolsData)
+	// Also update legacy field for backwards compatibility
+	if len(t.poolsData) > 0 {
+		t.currentGroup.AccountPoolName = t.poolsData[0]
+	} else {
+		t.currentGroup.AccountPoolName = ""
+	}
+	t.poolsDataMu.RUnlock()
 
 	t.instancesDataMu.RLock()
 	t.currentGroup.AvailableInstances = make([]int, len(t.instancesData))
@@ -1132,6 +1243,70 @@ func (t *OrchestrationTabV3) handleRemoveInstance(id widget.ListItemID) {
 		})
 		t.markDirty()
 	}
+}
+
+// handleAddPoolFromDropdown adds a pool from the dropdown
+func (t *OrchestrationTabV3) handleAddPoolFromDropdown() {
+	selected := t.addPoolDropdown.Selected
+	if selected == "" {
+		dialog.ShowError(fmt.Errorf("please select a pool"), t.window)
+		return
+	}
+
+	// Check if already added
+	t.poolsDataMu.Lock()
+	for _, pool := range t.poolsData {
+		if pool == selected {
+			t.poolsDataMu.Unlock()
+			dialog.ShowError(fmt.Errorf("pool '%s' already added", selected), t.window)
+			return
+		}
+	}
+
+	// Add pool
+	t.poolsData = append(t.poolsData, selected)
+	t.poolsDataMu.Unlock()
+
+	fyne.Do(func() {
+		t.poolsList.Refresh()
+	})
+
+	t.markDirty()
+}
+
+// handleRemovePool removes a pool by index
+func (t *OrchestrationTabV3) handleRemovePool(id widget.ListItemID) {
+	t.poolsDataMu.Lock()
+	defer t.poolsDataMu.Unlock()
+
+	if id >= 0 && id < len(t.poolsData) {
+		t.poolsData = append(t.poolsData[:id], t.poolsData[id+1:]...)
+		fyne.Do(func() {
+			t.poolsList.Refresh()
+		})
+		t.markDirty()
+	}
+}
+
+// updatePoolDropdownList updates the pool dropdown list
+func (t *OrchestrationTabV3) updatePoolDropdownList() {
+	if t.orchestrator == nil {
+		t.addPoolDropdown.Options = []string{"No orchestrator"}
+		return
+	}
+
+	poolManager := t.orchestrator.GetPoolManager()
+	if poolManager == nil {
+		t.addPoolDropdown.Options = []string{"No pool manager"}
+		return
+	}
+
+	// Get list of pool names
+	poolNames := poolManager.ListPools()
+	t.addPoolDropdown.Options = poolNames
+	fyne.Do(func() {
+		t.addPoolDropdown.Refresh()
+	})
 }
 
 // updateInstanceDropdown updates the instance dropdown from emulator manager

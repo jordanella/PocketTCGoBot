@@ -26,7 +26,8 @@ type BotGroupDefinition struct {
 	RequestedBotCount  int   `yaml:"requested_bot_count" json:"requested_bot_count"`
 
 	// Account pool configuration
-	AccountPoolName string `yaml:"account_pool_name,omitempty" json:"account_pool_name,omitempty"`
+	AccountPoolName  string   `yaml:"account_pool_name,omitempty" json:"account_pool_name,omitempty"`     // Legacy single pool (deprecated)
+	AccountPoolNames []string `yaml:"account_pool_names,omitempty" json:"account_pool_names,omitempty"` // Multiple pools
 
 	// Launch options
 	LaunchOptions LaunchOptions `yaml:"launch_options" json:"launch_options"`
@@ -46,6 +47,7 @@ func (d *BotGroupDefinition) Clone() *BotGroupDefinition {
 
 	// Deep copy slices and maps
 	clone.AvailableInstances = append([]int{}, d.AvailableInstances...)
+	clone.AccountPoolNames = append([]string{}, d.AccountPoolNames...)
 	clone.Tags = append([]string{}, d.Tags...)
 
 	clone.RoutineConfig = make(map[string]string)
