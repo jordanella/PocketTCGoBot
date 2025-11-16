@@ -108,14 +108,14 @@ func NewOrchestrationTabV3(orchestrator *bot.Orchestrator, emulatorMgr *emulator
 
 // Build constructs the tab UI with inline editing
 func (t *OrchestrationTabV3) Build() fyne.CanvasObject {
-	// Load existing groups
-	t.loadGroupDefinitions()
-
 	// Left panel: Group list
 	leftPanel := t.buildLeftPanel()
 
 	// Right panel: Tabbed editor
 	rightPanel := t.buildRightPanel()
+
+	// Load existing groups (after UI is built)
+	t.loadGroupDefinitions()
 
 	// Split layout
 	split := container.NewHSplit(leftPanel, rightPanel)
