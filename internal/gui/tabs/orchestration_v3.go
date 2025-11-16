@@ -36,21 +36,21 @@ type OrchestrationTabV3 struct {
 	groupsDataMu sync.RWMutex
 
 	// Left panel: Group list
-	groupsList      *widget.List
-	selectedIndex   int
-	newGroupBtn     *widget.Button
-	refreshBtn      *widget.Button
-	statusLabel     *widget.Label
+	groupsList    *widget.List
+	selectedIndex int
+	newGroupBtn   *widget.Button
+	refreshBtn    *widget.Button
+	statusLabel   *widget.Label
 
 	// Right panel: Tabs
 	tabs *container.AppTabs
 
 	// Details tab widgets
-	nameEntry        *widget.Entry
-	descEntry        *widget.Entry
-	routineEntry     *widget.Entry
-	botCountEntry    *widget.Entry
-	poolSelect       *widget.Select
+	nameEntry     *widget.Entry
+	descEntry     *widget.Entry
+	routineSelect *widget.Select
+	botCountEntry *widget.Entry
+	poolSelect    *widget.Select
 
 	// Instances tab widgets
 	instancesList       *widget.List
@@ -61,40 +61,40 @@ type OrchestrationTabV3 struct {
 	refreshInstancesBtn *widget.Button
 
 	// Account Pools tab widgets
-	poolsList           *widget.List
-	poolsData           []string
-	poolsDataMu         sync.RWMutex
-	addPoolDropdown     *widget.Select
-	addPoolBtn          *widget.Button
-	refreshPoolsBtn     *widget.Button
+	poolsList       *widget.List
+	poolsData       []string
+	poolsDataMu     sync.RWMutex
+	addPoolDropdown *widget.Select
+	addPoolBtn      *widget.Button
+	refreshPoolsBtn *widget.Button
 
 	// Launch Options tab widgets
-	validateRoutineCheck   *widget.Check
-	validateTemplatesCheck *widget.Check
-	validateEmulatorsCheck *widget.Check
-	staggerDelayEntry      *widget.Entry
-	emulatorTimeoutEntry   *widget.Entry
+	validateRoutineCheck     *widget.Check
+	validateTemplatesCheck   *widget.Check
+	validateEmulatorsCheck   *widget.Check
+	staggerDelayEntry        *widget.Entry
+	emulatorTimeoutEntry     *widget.Entry
 	conflictResolutionSelect *widget.Select
 
 	// Restart Policy widgets
-	restartEnabledCheck    *widget.Check
-	maxRetriesEntry        *widget.Entry
-	initialDelayEntry      *widget.Entry
-	maxDelayEntry          *widget.Entry
-	backoffFactorEntry     *widget.Entry
-	resetOnSuccessCheck    *widget.Check
+	restartEnabledCheck *widget.Check
+	maxRetriesEntry     *widget.Entry
+	initialDelayEntry   *widget.Entry
+	maxDelayEntry       *widget.Entry
+	backoffFactorEntry  *widget.Entry
+	resetOnSuccessCheck *widget.Check
 
 	// Status tab widgets
-	statusList     *widget.List
-	statusData     [][]string
-	statusDataMu   sync.RWMutex
+	statusList   *widget.List
+	statusData   [][]string
+	statusDataMu sync.RWMutex
 
 	// Action buttons
-	saveBtn      *widget.Button
-	discardBtn   *widget.Button
-	deleteBtn    *widget.Button
-	startBtn     *widget.Button
-	stopBtn      *widget.Button
+	saveBtn    *widget.Button
+	discardBtn *widget.Button
+	deleteBtn  *widget.Button
+	startBtn   *widget.Button
+	stopBtn    *widget.Button
 
 	// Refresh control
 	stopRefresh chan bool
@@ -285,9 +285,8 @@ func (t *OrchestrationTabV3) buildDetailsTab() fyne.CanvasObject {
 	t.descEntry.OnChanged = func(s string) { t.markDirty() }
 	t.descEntry.SetMinRowsVisible(3)
 
-	t.routineEntry = widget.NewEntry()
-	t.routineEntry.SetPlaceHolder("e.g., farm_premium_packs.yaml")
-	t.routineEntry.OnChanged = func(s string) { t.markDirty() }
+	t.routineSelect = widget.NewSelect([]string{}, func(s string) { t.markDirty() })
+	t.routineSelect.PlaceHolder = "Select routine"
 
 	t.botCountEntry = widget.NewEntry()
 	t.botCountEntry.SetPlaceHolder("Number of concurrent bots")
@@ -296,13 +295,14 @@ func (t *OrchestrationTabV3) buildDetailsTab() fyne.CanvasObject {
 	t.poolSelect = widget.NewSelect([]string{}, func(s string) { t.markDirty() })
 	t.poolSelect.PlaceHolder = "Select account pool (optional)"
 
-	// Populate pool dropdown
+	// Populate dropdowns
+	t.updateRoutineDropdown()
 	t.updatePoolDropdown()
 
 	form := container.NewVBox(
 		components.FieldRow("Group Name", t.nameEntry),
 		components.FieldRow("Description", t.descEntry),
-		components.FieldRow("Routine", t.routineEntry),
+		components.FieldRow("Routine", t.routineSelect),
 		components.FieldRow("Concurrent Bot Count", t.botCountEntry),
 		components.FieldRow("Account Pool", t.poolSelect),
 	)
@@ -672,7 +672,7 @@ func (t *OrchestrationTabV3) populateFields() {
 	// Details tab
 	t.nameEntry.SetText(t.currentGroup.Name)
 	t.descEntry.SetText(t.currentGroup.Description)
-	t.routineEntry.SetText(t.currentGroup.RoutineName)
+	t.routineSelect.SetSelected(t.currentGroup.RoutineName)
 	t.botCountEntry.SetText(fmt.Sprintf("%d", t.currentGroup.RequestedBotCount))
 	t.poolSelect.SetSelected(t.currentGroup.AccountPoolName)
 
@@ -779,32 +779,34 @@ func (t *OrchestrationTabV3) clearDirty() {
 
 // updateButtonStates updates action button states based on group state
 func (t *OrchestrationTabV3) updateButtonStates() {
-	hasGroup := t.currentGroup != nil
-	isRunning := t.currentRunGroup != nil && t.currentRunGroup.IsRunning()
+	fyne.Do(func() {
+		hasGroup := t.currentGroup != nil
+		isRunning := t.currentRunGroup != nil && t.currentRunGroup.IsRunning()
 
-	if t.deleteBtn != nil {
-		if hasGroup {
-			t.deleteBtn.Enable()
-		} else {
-			t.deleteBtn.Disable()
+		if t.deleteBtn != nil {
+			if hasGroup {
+				t.deleteBtn.Enable()
+			} else {
+				t.deleteBtn.Disable()
+			}
 		}
-	}
 
-	if t.startBtn != nil {
-		if hasGroup && !isRunning {
-			t.startBtn.Enable()
-		} else {
-			t.startBtn.Disable()
+		if t.startBtn != nil {
+			if hasGroup && !isRunning {
+				t.startBtn.Enable()
+			} else {
+				t.startBtn.Disable()
+			}
 		}
-	}
 
-	if t.stopBtn != nil {
-		if hasGroup && isRunning {
-			t.stopBtn.Enable()
-		} else {
-			t.stopBtn.Disable()
+		if t.stopBtn != nil {
+			if hasGroup && isRunning {
+				t.stopBtn.Enable()
+			} else {
+				t.stopBtn.Disable()
+			}
 		}
-	}
+	})
 }
 
 // handleNewGroup creates a new group with just a name
@@ -903,9 +905,9 @@ func (t *OrchestrationTabV3) handleSaveChanges() {
 		return
 	}
 
-	routine := strings.TrimSpace(t.routineEntry.Text)
+	routine := t.routineSelect.Selected
 	if routine == "" {
-		dialog.ShowError(fmt.Errorf("routine name is required"), t.window)
+		dialog.ShowError(fmt.Errorf("routine must be selected"), t.window)
 		return
 	}
 
@@ -1288,6 +1290,28 @@ func (t *OrchestrationTabV3) handleRemovePool(id widget.ListItemID) {
 	}
 }
 
+// updateRoutineDropdown updates the routine dropdown from routine registry
+func (t *OrchestrationTabV3) updateRoutineDropdown() {
+	if t.orchestrator == nil {
+		t.routineSelect.Options = []string{}
+		return
+	}
+
+	// Get routine registry from orchestrator
+	routineRegistry := t.orchestrator.GetRoutineRegistry()
+	if routineRegistry == nil {
+		t.routineSelect.Options = []string{}
+		return
+	}
+
+	// List all valid routine files
+	routineNames := routineRegistry.ListValid()
+	t.routineSelect.Options = routineNames
+	fyne.Do(func() {
+		t.routineSelect.Refresh()
+	})
+}
+
 // updatePoolDropdownList updates the pool dropdown list
 func (t *OrchestrationTabV3) updatePoolDropdownList() {
 	if t.orchestrator == nil {
@@ -1301,9 +1325,21 @@ func (t *OrchestrationTabV3) updatePoolDropdownList() {
 		return
 	}
 
+	// Discover pools from disk first
+	if err := poolManager.DiscoverPools(); err != nil {
+		fmt.Printf("Warning: Failed to discover pools: %v\n", err)
+		t.addPoolDropdown.Options = []string{fmt.Sprintf("Error: %v", err)}
+		return
+	}
+
 	// Get list of pool names
 	poolNames := poolManager.ListPools()
-	t.addPoolDropdown.Options = poolNames
+	if len(poolNames) == 0 {
+		t.addPoolDropdown.Options = []string{"No pools found in pools/ directory"}
+	} else {
+		t.addPoolDropdown.Options = poolNames
+	}
+
 	fyne.Do(func() {
 		t.addPoolDropdown.Refresh()
 	})
@@ -1372,6 +1408,13 @@ func (t *OrchestrationTabV3) updatePoolDropdown() {
 
 	poolManager := t.orchestrator.GetPoolManager()
 	if poolManager == nil {
+		t.poolSelect.Options = []string{}
+		return
+	}
+
+	// Discover pools from disk first
+	if err := poolManager.DiscoverPools(); err != nil {
+		fmt.Printf("Warning: Failed to discover pools: %v\n", err)
 		t.poolSelect.Options = []string{}
 		return
 	}

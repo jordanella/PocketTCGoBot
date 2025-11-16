@@ -116,6 +116,13 @@ func (o *Orchestrator) acquireInstances(group *BotGroup, options LaunchOptions) 
 		LaunchErrors:      make([]string, 0),
 	}
 
+	// Discover running instances before checking availability
+	if err := o.emulatorManager.DiscoverInstances(); err != nil {
+		result.LaunchErrors = append(result.LaunchErrors,
+			fmt.Sprintf("failed to discover emulator instances: %v", err))
+		// Continue anyway - instances might still be launchable
+	}
+
 	// Check all available instances
 	for _, instanceID := range group.AvailableInstances {
 		// Stop if we have enough

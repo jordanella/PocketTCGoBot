@@ -162,7 +162,8 @@ func (o *Orchestrator) isEmulatorRunning(instanceID int) (bool, error) {
 	// Use emulator manager to detect if instance is running
 	instance, err := o.emulatorManager.GetInstance(instanceID)
 	if err != nil {
-		return false, fmt.Errorf("failed to get emulator instance %d: %w", instanceID, err)
+		// Instance not found/discovered = not running (not an error)
+		return false, nil
 	}
 
 	// Check if window is detectable via MuMu instance
@@ -197,64 +198,37 @@ func (o *Orchestrator) launchEmulator(instanceID int) (int, error) {
 }
 
 // waitForEmulatorReady waits for an emulator to be ready for bot operations
+// This now uses the orchestrator health monitor instead of duplicating polling logic
 func (o *Orchestrator) waitForEmulatorReady(instanceID int, timeout time.Duration) error {
 	if o.emulatorManager == nil {
 		return fmt.Errorf("emulator manager not configured")
 	}
 
-	// Create timeout context
-	startTime := time.Now()
-
-	// Poll until window is detected and ADB is responsive
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
 	fmt.Printf("[WaitForReady] Waiting for instance %d to be ready (timeout: %v)\n", instanceID, timeout)
 
-	for range ticker.C {
-		// Check timeout
-		if time.Since(startTime) > timeout {
-			return fmt.Errorf("timeout waiting for emulator instance %d to be ready after %v", instanceID, timeout)
-		}
+	// Start tracking this instance in the health monitor
+	o.healthMonitor.TrackInstance(instanceID)
+	defer o.healthMonitor.UntrackInstance(instanceID)
 
-		// Rediscover instances to get updated window handles
-		if err := o.emulatorManager.DiscoverInstances(); err != nil {
-			fmt.Printf("[WaitForReady] Failed to discover instances: %v\n", err)
-			continue
-		}
-
-		// Get fresh instance reference
-		instance, err := o.emulatorManager.GetInstance(instanceID)
-		if err != nil {
-			fmt.Printf("[WaitForReady] Failed to get instance %d: %v\n", instanceID, err)
-			continue
-		}
-
-		// Check if window handle exists
-		if instance.MuMu == nil || instance.MuMu.WindowHandle == 0 {
-			fmt.Printf("[WaitForReady] Instance %d: Window not detected yet\n", instanceID)
-			continue
-		}
-
-		fmt.Printf("[WaitForReady] Instance %d: Window detected (handle: %d)\n", instanceID, instance.MuMu.WindowHandle)
-
-		// Check if ADB is available
-		adb := instance.ADB
-		if adb == nil {
-			fmt.Printf("[WaitForReady] Instance %d: ADB controller not initialized\n", instanceID)
-			continue
-		}
-
-		// Try ADB connection
-		if err := adb.Connect(); err != nil {
-			fmt.Printf("[WaitForReady] Instance %d: ADB connect failed: %v\n", instanceID, err)
-			continue
-		}
-
-		// Emulator is ready
-		fmt.Printf("[WaitForReady] Instance %d: Ready! (window detected and ADB connected)\n", instanceID)
+	// Check if already ready (avoid unnecessary wait)
+	if o.healthMonitor.IsInstanceReady(instanceID) {
+		fmt.Printf("[WaitForReady] Instance %d is already ready!\n", instanceID)
 		return nil
 	}
 
-	return fmt.Errorf("emulator instance %d never became ready", instanceID)
+	// Wait for instance to become ready via health monitor
+	// The health monitor polls every 1 second and checks:
+	// - Window detection (via DiscoverInstances)
+	// - ADB connection (via Shell command test)
+	if err := o.healthMonitor.WaitForInstanceReady(instanceID, timeout); err != nil {
+		return err
+	}
+
+	// Connect ADB now that instance is ready
+	if err := o.emulatorManager.ConnectInstance(instanceID); err != nil {
+		return fmt.Errorf("instance %d ready but ADB connection failed: %w", instanceID, err)
+	}
+
+	fmt.Printf("[WaitForReady] Instance %d: Ready! (window detected and ADB connected)\n", instanceID)
+	return nil
 }

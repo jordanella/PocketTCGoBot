@@ -31,6 +31,9 @@ type Orchestrator struct {
 	// Emulator manager for instance lifecycle
 	emulatorManager *emulator.Manager
 
+	// Health monitoring for instance launching
+	healthMonitor *OrchestratorHealthMonitor
+
 	// Group management
 	groupDefinitions map[string]*BotGroupDefinition // Saved configurations
 	activeGroups     map[string]*BotGroup           // Running instances
@@ -162,11 +165,16 @@ func NewOrchestrator(
 		groupConfigDir = config.FolderPath + "/groups"
 	}
 
+	// Create and start health monitor
+	healthMonitor := NewOrchestratorHealthMonitor(emulatorManager)
+	healthMonitor.Start()
+
 	return &Orchestrator{
 		config:           config,
 		templateRegistry: templateRegistry,
 		routineRegistry:  routineRegistry,
 		emulatorManager:  emulatorManager,
+		healthMonitor:    healthMonitor,
 		poolManager:      poolManager,
 		db:               db,
 		groupDefinitions: make(map[string]*BotGroupDefinition),
@@ -358,6 +366,11 @@ func (g *BotGroup) GetAllBotInfo() map[int]*BotInfo {
 // GetPoolManager returns the pool manager
 func (o *Orchestrator) GetPoolManager() *accountpool.PoolManager {
 	return o.poolManager
+}
+
+// GetRoutineRegistry returns the routine registry
+func (o *Orchestrator) GetRoutineRegistry() *actions.RoutineRegistry {
+	return o.routineRegistry
 }
 
 // SetGroupAccountPool sets a group's account pool by name (resolves via PoolManager)
