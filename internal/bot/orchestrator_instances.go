@@ -180,25 +180,26 @@ func (o *Orchestrator) launchEmulator(instanceID int) (int, error) {
 		return 0, fmt.Errorf("emulator manager not configured")
 	}
 
-	_, err := o.emulatorManager.GetInstance(instanceID)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get emulator instance %d: %w", instanceID, err)
+	// Get MuMu manager
+	mumuMgr := o.emulatorManager.GetMuMuManager()
+	if mumuMgr == nil {
+		return 0, fmt.Errorf("MuMu manager not available")
 	}
 
-	// TODO: Implement emulator launch
-	// For now, return error as this requires OS-specific process launching
-	return 0, fmt.Errorf("emulator launch not yet implemented - instance %d must be started manually", instanceID)
+	// Launch the instance using MuMu manager
+	if err := mumuMgr.LaunchInstance(instanceID); err != nil {
+		return 0, fmt.Errorf("failed to launch instance %d: %w", instanceID, err)
+	}
+
+	// We don't have direct PID access from LaunchInstance, return 0
+	// The PID isn't critical as we track instances by ID
+	return 0, nil
 }
 
 // waitForEmulatorReady waits for an emulator to be ready for bot operations
 func (o *Orchestrator) waitForEmulatorReady(instanceID int, timeout time.Duration) error {
 	if o.emulatorManager == nil {
 		return fmt.Errorf("emulator manager not configured")
-	}
-
-	instance, err := o.emulatorManager.GetInstance(instanceID)
-	if err != nil {
-		return fmt.Errorf("failed to get emulator instance %d: %w", instanceID, err)
 	}
 
 	// Create timeout context
@@ -208,28 +209,51 @@ func (o *Orchestrator) waitForEmulatorReady(instanceID int, timeout time.Duratio
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
+	fmt.Printf("[WaitForReady] Waiting for instance %d to be ready (timeout: %v)\n", instanceID, timeout)
+
 	for range ticker.C {
 		// Check timeout
 		if time.Since(startTime) > timeout {
-			return fmt.Errorf("timeout waiting for emulator instance %d to be ready", instanceID)
+			return fmt.Errorf("timeout waiting for emulator instance %d to be ready after %v", instanceID, timeout)
+		}
+
+		// Rediscover instances to get updated window handles
+		if err := o.emulatorManager.DiscoverInstances(); err != nil {
+			fmt.Printf("[WaitForReady] Failed to discover instances: %v\n", err)
+			continue
+		}
+
+		// Get fresh instance reference
+		instance, err := o.emulatorManager.GetInstance(instanceID)
+		if err != nil {
+			fmt.Printf("[WaitForReady] Failed to get instance %d: %v\n", instanceID, err)
+			continue
 		}
 
 		// Check if window handle exists
 		if instance.MuMu == nil || instance.MuMu.WindowHandle == 0 {
+			fmt.Printf("[WaitForReady] Instance %d: Window not detected yet\n", instanceID)
 			continue
 		}
 
-		// Check if ADB is responsive
+		fmt.Printf("[WaitForReady] Instance %d: Window detected (handle: %d)\n", instanceID, instance.MuMu.WindowHandle)
+
+		// Check if ADB is available
 		adb := instance.ADB
 		if adb == nil {
+			fmt.Printf("[WaitForReady] Instance %d: ADB controller not initialized\n", instanceID)
 			continue
 		}
 
-		// Try a simple ADB command
-		if err := adb.Connect(); err == nil {
-			// Emulator is ready
-			return nil
+		// Try ADB connection
+		if err := adb.Connect(); err != nil {
+			fmt.Printf("[WaitForReady] Instance %d: ADB connect failed: %v\n", instanceID, err)
+			continue
 		}
+
+		// Emulator is ready
+		fmt.Printf("[WaitForReady] Instance %d: Ready! (window detected and ADB connected)\n", instanceID)
+		return nil
 	}
 
 	return fmt.Errorf("emulator instance %d never became ready", instanceID)
