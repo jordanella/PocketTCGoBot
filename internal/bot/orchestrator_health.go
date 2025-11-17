@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"jordanella.com/pocket-tcg-go/internal/emulator"
+	"jordanella.com/pocket-tcg-go/internal/events"
 	"jordanella.com/pocket-tcg-go/internal/monitor"
 )
 
@@ -20,6 +21,9 @@ type InstanceHealthStatus struct {
 	ConsecutiveFails int
 }
 
+// HealthStatusCallback is called when an instance's health status changes
+type HealthStatusCallback func(instanceID int, isReady bool, previousReady bool)
+
 // OrchestratorHealthMonitor provides health monitoring for orchestrator instance launching
 // It wraps the existing HealthChecker system to avoid duplicating polling logic
 type OrchestratorHealthMonitor struct {
@@ -32,6 +36,13 @@ type OrchestratorHealthMonitor struct {
 	// Ready notifications
 	readyChannels   map[int][]chan bool
 	readyChannelsMu sync.Mutex
+
+	// Health change callbacks
+	callbacks   map[int][]HealthStatusCallback
+	callbacksMu sync.RWMutex
+
+	// Event bus for publishing health events
+	eventBus events.EventBus
 
 	// Background monitoring
 	ctx    context.Context
@@ -47,9 +58,16 @@ func NewOrchestratorHealthMonitor(emulatorManager *emulator.Manager) *Orchestrat
 		emulatorManager: emulatorManager,
 		instances:       make(map[int]*InstanceHealthStatus),
 		readyChannels:   make(map[int][]chan bool),
+		callbacks:       make(map[int][]HealthStatusCallback),
+		eventBus:        nil, // Will be set by orchestrator via SetEventBus
 		ctx:             ctx,
 		cancel:          cancel,
 	}
+}
+
+// SetEventBus sets the event bus for publishing health events
+func (ohm *OrchestratorHealthMonitor) SetEventBus(eventBus events.EventBus) {
+	ohm.eventBus = eventBus
 }
 
 // Start begins background health monitoring
@@ -102,6 +120,11 @@ func (ohm *OrchestratorHealthMonitor) WaitForInstanceReady(instanceID int, timeo
 
 		return fmt.Errorf("timeout waiting for instance %d to be ready after %v", instanceID, timeout)
 	case <-ohm.ctx.Done():
+		// Remove channel from list to prevent leak
+		ohm.readyChannelsMu.Lock()
+		ohm.removeReadyChannel(instanceID, readyChan)
+		ohm.readyChannelsMu.Unlock()
+
 		return fmt.Errorf("health monitor stopped while waiting for instance %d", instanceID)
 	}
 }
@@ -133,6 +156,16 @@ func (ohm *OrchestratorHealthMonitor) GetInstanceStatus(instanceID int) *Instanc
 	return nil
 }
 
+// OnHealthChange registers a callback for health status changes
+// The callback is invoked when the instance's health status changes (ready <-> not ready)
+func (ohm *OrchestratorHealthMonitor) OnHealthChange(instanceID int, callback HealthStatusCallback) {
+	ohm.callbacksMu.Lock()
+	defer ohm.callbacksMu.Unlock()
+
+	ohm.callbacks[instanceID] = append(ohm.callbacks[instanceID], callback)
+	fmt.Printf("[HealthMonitor] Registered health callback for instance %d\n", instanceID)
+}
+
 // monitorInstances runs in background and checks instance health periodically
 func (ohm *OrchestratorHealthMonitor) monitorInstances() {
 	defer ohm.wg.Done()
@@ -158,9 +191,17 @@ func (ohm *OrchestratorHealthMonitor) checkAllInstances() {
 		fmt.Printf("Warning: Failed to discover instances during health check: %v\n", err)
 	}
 
-	ohm.instancesMu.Lock()
-	defer ohm.instancesMu.Unlock()
+	// Notification queue to process outside of lock
+	type notification struct {
+		instanceID    int
+		becameReady   bool
+		statusChanged bool
+		isReady       bool
+		previousReady bool
+	}
+	notifications := make([]notification, 0)
 
+	ohm.instancesMu.Lock()
 	// Check each tracked instance
 	for instanceID, status := range ohm.instances {
 		previousReady := status.IsReady
@@ -169,12 +210,28 @@ func (ohm *OrchestratorHealthMonitor) checkAllInstances() {
 		instance, err := ohm.emulatorManager.GetInstance(instanceID)
 		status.WindowDetected = (err == nil && instance.MuMu != nil && instance.MuMu.WindowHandle != 0)
 
-		// Check ADB connection
+		// Check ADB connection - try to connect if not connected
 		status.ADBConnected = false
-		if status.WindowDetected && instance.ADB != nil {
-			// Try a simple ADB command to verify connection
-			_, err := instance.ADB.Shell("echo test")
-			status.ADBConnected = (err == nil)
+		if status.WindowDetected {
+			if instance.ADB == nil {
+				// Try to connect ADB
+				fmt.Printf("[HealthMonitor] Instance %d: Window detected, attempting ADB connection...\n", instanceID)
+				if err := ohm.emulatorManager.ConnectInstance(instanceID); err != nil {
+					fmt.Printf("[HealthMonitor] Instance %d: ADB connection failed: %v\n", instanceID, err)
+				} else {
+					// Re-fetch instance to get updated ADB connection
+					instance, err = ohm.emulatorManager.GetInstance(instanceID)
+					if err == nil && instance.ADB != nil {
+						fmt.Printf("[HealthMonitor] Instance %d: ADB connection successful\n", instanceID)
+					}
+				}
+			}
+
+			// Test ADB connection if we have it
+			if instance.ADB != nil {
+				_, err := instance.ADB.Shell("echo test")
+				status.ADBConnected = (err == nil)
+			}
 		}
 
 		// Update ready state
@@ -188,9 +245,48 @@ func (ohm *OrchestratorHealthMonitor) checkAllInstances() {
 			status.ConsecutiveFails = 0
 		}
 
-		// Notify waiting goroutines if instance became ready
-		if !previousReady && status.IsReady {
-			ohm.notifyInstanceReady(instanceID)
+		// Queue notifications to process outside lock
+		becameReady := !previousReady && status.IsReady
+		statusChanged := previousReady != status.IsReady
+
+		if becameReady || statusChanged {
+			notifications = append(notifications, notification{
+				instanceID:    instanceID,
+				becameReady:   becameReady,
+				statusChanged: statusChanged,
+				isReady:       status.IsReady,
+				previousReady: previousReady,
+			})
+		}
+	}
+	ohm.instancesMu.Unlock()
+
+	// Process notifications without holding instancesMu
+	// This prevents deadlock when callbacks or notifyInstanceReady acquire other locks
+	for _, n := range notifications {
+		if n.becameReady {
+			ohm.notifyInstanceReady(n.instanceID)
+		}
+		if n.statusChanged {
+			ohm.invokeHealthCallbacks(n.instanceID, n.isReady, n.previousReady)
+
+			// Publish health change event
+			if ohm.eventBus != nil {
+				// Get current status for event data
+				ohm.instancesMu.RLock()
+				status := ohm.instances[n.instanceID]
+				ohm.instancesMu.RUnlock()
+
+				if status != nil {
+					ohm.eventBus.PublishAsync(events.NewInstanceHealthChangedEvent(
+						n.instanceID,
+						n.isReady,
+						n.previousReady,
+						status.WindowDetected,
+						status.ADBConnected,
+					))
+				}
+			}
 		}
 	}
 }
@@ -220,14 +316,18 @@ func (ohm *OrchestratorHealthMonitor) UntrackInstance(instanceID int) {
 
 	// Close any waiting channels
 	ohm.readyChannelsMu.Lock()
-	defer ohm.readyChannelsMu.Unlock()
-
 	if channels, exists := ohm.readyChannels[instanceID]; exists {
 		for _, ch := range channels {
 			close(ch)
 		}
 		delete(ohm.readyChannels, instanceID)
 	}
+	ohm.readyChannelsMu.Unlock()
+
+	// Remove callbacks
+	ohm.callbacksMu.Lock()
+	delete(ohm.callbacks, instanceID)
+	ohm.callbacksMu.Unlock()
 }
 
 // notifyInstanceReady notifies all waiting goroutines that an instance is ready
@@ -265,6 +365,31 @@ func (ohm *OrchestratorHealthMonitor) removeReadyChannel(instanceID int, ch chan
 		if len(ohm.readyChannels[instanceID]) == 0 {
 			delete(ohm.readyChannels, instanceID)
 		}
+	}
+}
+
+// invokeHealthCallbacks invokes all registered callbacks for an instance
+// Must be called with instancesMu locked (read or write)
+func (ohm *OrchestratorHealthMonitor) invokeHealthCallbacks(instanceID int, isReady, previousReady bool) {
+	// Get callbacks with read lock
+	ohm.callbacksMu.RLock()
+	callbacks, exists := ohm.callbacks[instanceID]
+	ohm.callbacksMu.RUnlock()
+
+	if !exists || len(callbacks) == 0 {
+		return
+	}
+
+	// Log the health change
+	if previousReady && !isReady {
+		fmt.Printf("[HealthMonitor] Instance %d: Health changed: READY → UNHEALTHY\n", instanceID)
+	} else if !previousReady && isReady {
+		fmt.Printf("[HealthMonitor] Instance %d: Health changed: UNHEALTHY → READY\n", instanceID)
+	}
+
+	// Invoke callbacks in goroutines to avoid blocking health monitor
+	for _, callback := range callbacks {
+		go callback(instanceID, isReady, previousReady)
 	}
 }
 

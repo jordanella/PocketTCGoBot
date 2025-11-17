@@ -19,6 +19,7 @@ type PoolManager struct {
 	pools         map[string]*PoolDefinition
 	instances     map[string]AccountPool
 	mu            sync.RWMutex
+	eventBus      interface{} // events.EventBus - interface{} to avoid circular import
 }
 
 // PoolDefinition describes a pool configuration
@@ -56,6 +57,21 @@ func NewPoolManager(poolsDir string, db *sql.DB, xmlStorageDir string) *PoolMana
 		xmlStorageDir: xmlStorageDir,
 		pools:         make(map[string]*PoolDefinition),
 		instances:     make(map[string]AccountPool),
+		eventBus:      nil,
+	}
+}
+
+// SetEventBus sets the event bus for publishing pool events
+func (pm *PoolManager) SetEventBus(eventBus interface{}) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.eventBus = eventBus
+
+	// Also set on existing pool instances
+	for _, instance := range pm.instances {
+		if unifiedPool, ok := instance.(*UnifiedAccountPool); ok {
+			unifiedPool.SetEventBus(eventBus)
+		}
 	}
 }
 
@@ -176,6 +192,11 @@ func (pm *PoolManager) GetPool(name string) (AccountPool, error) {
 	pool, err := NewUnifiedAccountPool(pm.db, poolDef.FilePath, pm.xmlStorageDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pool: %w", err)
+	}
+
+	// Set event bus if available
+	if pm.eventBus != nil {
+		pool.SetEventBus(pm.eventBus)
 	}
 
 	// Cache instance
@@ -308,10 +329,22 @@ func (pm *PoolManager) TestPool(name string) (*TestResult, error) {
 	result.AccountsFound = stats.Total
 
 	// Get sample accounts (up to 10)
-	// This is a bit hacky - we're peeking at internal state
-	// In production, might want to add a ListAccounts() method to AccountPool
-	// For now, just report the count
-	result.SampleAccounts = make([]AccountSummary, 0)
+	accounts := pool.ListAccounts()
+	sampleLimit := 10
+	if len(accounts) < sampleLimit {
+		sampleLimit = len(accounts)
+	}
+
+	result.SampleAccounts = make([]AccountSummary, 0, sampleLimit)
+	for i := 0; i < sampleLimit; i++ {
+		acc := accounts[i]
+		summary := AccountSummary{
+			ID:        acc.ID,
+			PackCount: acc.PackCount,
+			Status:    acc.Status,
+		}
+		result.SampleAccounts = append(result.SampleAccounts, summary)
+	}
 
 	return result, nil
 }
@@ -425,13 +458,13 @@ func (pm *PoolManager) ImportFolder(folderPath string) (imported []string, err e
 		}
 
 		// Import to database
-		if err := pm.importAccountToDB(account); err != nil {
+		if err := importAccountToDB(pm.db, account); err != nil {
 			fmt.Printf("Warning: Failed to import account '%s': %v\n", account.DeviceAccount, err)
 			continue
 		}
 
 		// Copy to global storage
-		if err := pm.copyToGlobalStorage(xmlPath, account.DeviceAccount); err != nil {
+		if err := copyToGlobalStorage(xmlPath, pm.xmlStorageDir, account.DeviceAccount); err != nil {
 			fmt.Printf("Warning: Failed to copy to global storage: %v\n", err)
 			// Continue anyway - account is in DB
 		}
@@ -609,37 +642,8 @@ func parseAccountXMLFile(xmlPath string) (*Account, error) {
 	}, nil
 }
 
-// extractXMLTag extracts content from <tag>content</tag>
-func extractXMLTag(xml, tag string) string {
-	openTag := "<" + tag + ">"
-	closeTag := "</" + tag + ">"
-
-	startIdx := strings.Index(xml, openTag)
-	if startIdx == -1 {
-		return ""
-	}
-	startIdx += len(openTag)
-
-	endIdx := strings.Index(xml[startIdx:], closeTag)
-	if endIdx == -1 {
-		return ""
-	}
-
-	return xml[startIdx : startIdx+endIdx]
-}
-
-// importAccountToDB inserts or updates an account in the database
-func (pm *PoolManager) importAccountToDB(account *Account) error {
-	query := `
-		INSERT INTO accounts (device_account, device_password, created_at, last_used_at)
-		VALUES (?, ?, CURRENT_TIMESTAMP, NULL)
-		ON CONFLICT(device_account) DO UPDATE SET
-			device_password = excluded.device_password
-	`
-
-	_, err := pm.db.Exec(query, account.DeviceAccount, account.DevicePassword)
-	return err
-}
+// Note: extractXMLTag, importAccountToDB, and copyToGlobalStorage have been
+// moved to utils.go to eliminate code duplication
 
 // fetchAccountFromDB retrieves a single account from the database
 func (pm *PoolManager) fetchAccountFromDB(deviceAccount string) (*Account, error) {
@@ -673,22 +677,4 @@ func (pm *PoolManager) fetchAccountFromDB(deviceAccount string) (*Account, error
 	account.Status = AccountStatusAvailable
 
 	return account, nil
-}
-
-// copyToGlobalStorage copies an XML file to global storage
-func (pm *PoolManager) copyToGlobalStorage(sourcePath, deviceAccount string) error {
-	destPath := filepath.Join(pm.xmlStorageDir, deviceAccount+".xml")
-
-	// Read source
-	data, err := os.ReadFile(sourcePath)
-	if err != nil {
-		return fmt.Errorf("failed to read source: %w", err)
-	}
-
-	// Write to destination
-	if err := os.WriteFile(destPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write destination: %w", err)
-	}
-
-	return nil
 }

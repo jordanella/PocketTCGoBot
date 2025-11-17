@@ -1,0 +1,21 @@
+name: "App Restart Example"
+description: "Demonstrates how to restart the Pokemon TCG Pocket app"
+
+steps:
+  # Kill the app if it's running
+  - killapp:
+
+  # Wait for app to fully stop
+  - sleep: 2000
+
+  # Launch the app
+  - launchapp:
+
+  # Wait for app to start
+  - sleep: 5000
+
+  # You can now continue with other actions
+  # For example, wait for the main menu to appear
+  # - waitforimage:
+  #     template: "main_menu"
+  #     timeout: 30000

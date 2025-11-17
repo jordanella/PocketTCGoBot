@@ -26,6 +26,7 @@ type UnifiedAccountPool struct {
 	lastRefresh  time.Time
 	stats        PoolStats
 	xmlStorageDir string // Global XML storage directory
+	eventBus     interface{} // events.EventBus - interface{} to avoid circular import
 }
 
 // UnifiedPoolDefinition defines a unified pool configuration
@@ -158,8 +159,9 @@ func NewUnifiedAccountPool(db *sql.DB, definitionPath string, xmlStorageDir stri
 	}
 
 	// Validate definition
-	if err := validateUnifiedPoolDefinition(def); err != nil {
-		return nil, fmt.Errorf("invalid pool definition: %w", err)
+	validationResult := ValidatePoolDefinition(def)
+	if !validationResult.Valid {
+		return nil, fmt.Errorf("pool definition validation failed:\n%s", validationResult.FormatErrors())
 	}
 
 	// Ensure XML storage directory exists
@@ -194,6 +196,14 @@ func NewUnifiedAccountPool(db *sql.DB, definitionPath string, xmlStorageDir stri
 	return pool, nil
 }
 
+// SetEventBus sets the event bus for publishing pool events
+// Using interface{} to avoid circular import with events package
+func (p *UnifiedAccountPool) SetEventBus(eventBus interface{}) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.eventBus = eventBus
+}
+
 // loadUnifiedPoolDefinition loads a pool definition from YAML
 func loadUnifiedPoolDefinition(path string) (*UnifiedPoolDefinition, error) {
 	data, err := os.ReadFile(path)
@@ -209,61 +219,7 @@ func loadUnifiedPoolDefinition(path string) (*UnifiedPoolDefinition, error) {
 	return &def, nil
 }
 
-// validateUnifiedPoolDefinition validates the pool definition
-func validateUnifiedPoolDefinition(def *UnifiedPoolDefinition) error {
-	if def.PoolName == "" {
-		return fmt.Errorf("pool_name is required")
-	}
-
-	// Validate queries (ensure they have filters and at least one is enabled)
-	for i, query := range def.Queries {
-		if len(query.Filters) == 0 {
-			return fmt.Errorf("query %d (%s) has no filters defined", i, query.Name)
-		}
-
-		// Validate at least one enabled filter
-		hasEnabledFilter := false
-		for _, filter := range query.Filters {
-			if filter.IsEnabled() {
-				hasEnabledFilter = true
-				break
-			}
-		}
-		if !hasEnabledFilter {
-			return fmt.Errorf("query %d (%s) has no enabled filters", i, query.Name)
-		}
-	}
-
-	// Check for conflicts between include and exclude
-	if len(def.Include) > 0 && len(def.Exclude) > 0 {
-		conflicts := findConflicts(def.Include, def.Exclude)
-		if len(conflicts) > 0 {
-			// Log warning but allow (exclusions will be applied last)
-			fmt.Printf("Warning: Pool '%s' has accounts in both include and exclude: %v (exclusions will be applied)\n",
-				def.PoolName, conflicts)
-		}
-	}
-
-	return nil
-}
-
-// findConflicts finds accounts that appear in both lists
-func findConflicts(include, exclude []string) []string {
-	conflicts := []string{}
-	excludeSet := make(map[string]bool)
-
-	for _, e := range exclude {
-		excludeSet[e] = true
-	}
-
-	for _, i := range include {
-		if excludeSet[i] {
-			conflicts = append(conflicts, i)
-		}
-	}
-
-	return conflicts
-}
+// Note: Validation logic has been moved to validation.go using ValidationResult pattern
 
 // refresh executes account resolution: queries → include → exclude → watched paths
 func (p *UnifiedAccountPool) refresh() error {
@@ -341,7 +297,38 @@ func (p *UnifiedAccountPool) refresh() error {
 	p.updateStats()
 
 	p.lastRefresh = time.Now()
+
+	// Publish pool refreshed event if event bus is set
+	p.publishPoolRefreshed()
+
 	return nil
+}
+
+// publishPoolRefreshed publishes a pool refreshed event
+func (p *UnifiedAccountPool) publishPoolRefreshed() {
+	if p.eventBus == nil {
+		return
+	}
+
+	// Type assert to the method we need (avoiding import)
+	type eventPublisher interface {
+		PublishAsync(event interface{})
+	}
+
+	if bus, ok := p.eventBus.(eventPublisher); ok {
+		// Create event manually to avoid importing events package
+		event := map[string]interface{}{
+			"type":      "pool.refreshed",
+			"source":    "account_pool",
+			"timestamp": time.Now(),
+			"data": map[string]interface{}{
+				"pool_name":          p.definition.PoolName,
+				"total_accounts":     p.stats.Total,
+				"available_accounts": p.stats.Available,
+			},
+		}
+		bus.PublishAsync(event)
+	}
 }
 
 // executeQuery executes a single query and returns accounts
@@ -388,6 +375,10 @@ func (p *UnifiedAccountPool) executeQuery(query QuerySource) ([]*Account, error)
 		if lastUsedStr.Valid && lastUsedStr.String != "" {
 			if t, err := time.Parse(time.RFC3339, lastUsedStr.String); err == nil {
 				account.LastModified = t
+			} else {
+				// Log warning but continue - not a critical error
+				fmt.Printf("Warning: Failed to parse last_used_at for account %s: %v\n",
+					account.DeviceAccount, err)
 			}
 		}
 
@@ -436,6 +427,10 @@ func (p *UnifiedAccountPool) fetchAccountFromDB(deviceAccount string) (*Account,
 	if lastUsedStr.Valid && lastUsedStr.String != "" {
 		if t, err := time.Parse(time.RFC3339, lastUsedStr.String); err == nil {
 			account.LastModified = t
+		} else {
+			// Log warning but continue - not a critical error
+			fmt.Printf("Warning: Failed to parse last_used_at for account %s: %v\n",
+				account.DeviceAccount, err)
 		}
 	}
 
@@ -479,13 +474,13 @@ func (p *UnifiedAccountPool) syncWatchedPaths() ([]*Account, error) {
 			}
 
 			// Import to database (upsert)
-			if err := p.importAccountToDB(account); err != nil {
+			if err := importAccountToDB(p.db, account); err != nil {
 				fmt.Printf("Warning: Failed to import account '%s' to database: %v\n", account.DeviceAccount, err)
 				continue
 			}
 
 			// Copy to global storage
-			if err := p.copyToGlobalStorage(xmlPath, account.DeviceAccount); err != nil {
+			if err := copyToGlobalStorage(xmlPath, p.xmlStorageDir, account.DeviceAccount); err != nil {
 				fmt.Printf("Warning: Failed to copy XML to global storage: %v\n", err)
 				// Continue anyway - account is in DB
 			}
@@ -507,13 +502,13 @@ func (p *UnifiedAccountPool) parseAccountXML(xmlPath string) (*Account, error) {
 	content := string(data)
 
 	// Extract device_account
-	deviceAccount := extractXMLTagContent(content, "account")
+	deviceAccount := extractXMLTag(content, "account")
 	if deviceAccount == "" {
 		return nil, fmt.Errorf("missing <account> tag")
 	}
 
 	// Extract device_password
-	devicePassword := extractXMLTagContent(content, "password")
+	devicePassword := extractXMLTag(content, "password")
 	if devicePassword == "" {
 		return nil, fmt.Errorf("missing <password> tag")
 	}
@@ -530,56 +525,8 @@ func (p *UnifiedAccountPool) parseAccountXML(xmlPath string) (*Account, error) {
 	return account, nil
 }
 
-// extractXMLTag extracts content from <tag>content</tag>
-// Note: This is duplicated in pool_manager.go - should be refactored to shared utility
-func extractXMLTagContent(xml, tag string) string {
-	openTag := "<" + tag + ">"
-	closeTag := "</" + tag + ">"
-
-	startIdx := strings.Index(xml, openTag)
-	if startIdx == -1 {
-		return ""
-	}
-	startIdx += len(openTag)
-
-	endIdx := strings.Index(xml[startIdx:], closeTag)
-	if endIdx == -1 {
-		return ""
-	}
-
-	return xml[startIdx : startIdx+endIdx]
-}
-
-// importAccountToDB inserts or updates an account in the database
-func (p *UnifiedAccountPool) importAccountToDB(account *Account) error {
-	query := `
-		INSERT INTO accounts (device_account, device_password, created_at, last_used_at)
-		VALUES (?, ?, CURRENT_TIMESTAMP, NULL)
-		ON CONFLICT(device_account) DO UPDATE SET
-			device_password = excluded.device_password
-	`
-
-	_, err := p.db.Exec(query, account.DeviceAccount, account.DevicePassword)
-	return err
-}
-
-// copyToGlobalStorage copies an XML file to global storage
-func (p *UnifiedAccountPool) copyToGlobalStorage(sourcePath, deviceAccount string) error {
-	destPath := filepath.Join(p.xmlStorageDir, deviceAccount+".xml")
-
-	// Read source
-	data, err := os.ReadFile(sourcePath)
-	if err != nil {
-		return fmt.Errorf("failed to read source: %w", err)
-	}
-
-	// Write to destination
-	if err := os.WriteFile(destPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write destination: %w", err)
-	}
-
-	return nil
-}
+// Note: extractXMLTag, importAccountToDB, and copyToGlobalStorage have been
+// moved to utils.go to eliminate code duplication
 
 // sortAccounts sorts the account list based on configuration
 func (p *UnifiedAccountPool) sortAccounts() {
@@ -676,21 +623,26 @@ func (p *UnifiedAccountPool) autoRefresh() {
 
 // GetNext implements AccountPool.GetNext
 func (p *UnifiedAccountPool) GetNext(ctx context.Context) (*Account, error) {
-	p.mu.RLock()
-	if p.closed {
-		p.mu.RUnlock()
-		return nil, ErrPoolClosed
-	}
-	p.mu.RUnlock()
-
 	select {
 	case account := <-p.available:
+		// Check if pool was closed while waiting
+		p.mu.RLock()
+		if p.closed {
+			p.mu.RUnlock()
+			// Try to return account to pool if possible
+			select {
+			case p.available <- account:
+			default:
+				// Channel was closed or full, account will be lost
+			}
+			return nil, ErrPoolClosed
+		}
+
 		// Mark as in use
-		p.mu.Lock()
 		account.Status = AccountStatusInUse
 		now := time.Now()
 		account.AssignedAt = &now
-		p.mu.Unlock()
+		p.mu.RUnlock()
 
 		// Ensure XML exists
 		if err := p.ensureXMLExists(account); err != nil {
@@ -703,6 +655,14 @@ func (p *UnifiedAccountPool) GetNext(ctx context.Context) (*Account, error) {
 		return nil, ctx.Err()
 
 	default:
+		// Quick check if pool is closed
+		p.mu.RLock()
+		closed := p.closed
+		p.mu.RUnlock()
+
+		if closed {
+			return nil, ErrPoolClosed
+		}
 		return nil, ErrNoAccountsAvailable
 	}
 }

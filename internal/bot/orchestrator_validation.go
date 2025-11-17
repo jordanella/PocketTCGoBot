@@ -28,6 +28,8 @@ const (
 	ValidationErrorTemplateNotFound ValidationErrorType = "template_not_found"
 	ValidationErrorInvalidConfig    ValidationErrorType = "invalid_config"
 	ValidationErrorMissingVariable  ValidationErrorType = "missing_variable"
+	ValidationErrorInvalidField     ValidationErrorType = "invalid_field"
+	ValidationErrorMissingField     ValidationErrorType = "missing_field"
 )
 
 // ValidateRoutine performs comprehensive validation of a routine
@@ -205,4 +207,169 @@ func (vr *ValidationResult) HasErrorType(errorType ValidationErrorType) bool {
 		}
 	}
 	return false
+}
+
+// ValidateGroupDefinition validates a bot group definition
+func ValidateGroupDefinition(def *BotGroupDefinition) *ValidationResult {
+	result := &ValidationResult{
+		Valid:  true,
+		Errors: make([]ValidationError, 0),
+	}
+
+	// Validate name
+	if def.Name == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Type:    ValidationErrorMissingField,
+			Message: "Group name is required",
+			Context: "Name",
+		})
+	}
+
+	// Validate routine name
+	if def.RoutineName == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Type:    ValidationErrorMissingField,
+			Message: "Routine name is required",
+			Context: "RoutineName",
+		})
+	}
+
+	// Validate available instances
+	if len(def.AvailableInstances) == 0 {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Type:    ValidationErrorMissingField,
+			Message: "At least one instance must be specified",
+			Context: "AvailableInstances",
+		})
+	}
+
+	// Validate requested bot count
+	if def.RequestedBotCount <= 0 {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Type:    ValidationErrorInvalidField,
+			Message: "Requested bot count must be positive",
+			Context: "RequestedBotCount",
+		})
+	}
+
+	// Check if requested bot count exceeds available instances
+	if def.RequestedBotCount > len(def.AvailableInstances) {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Type: ValidationErrorInvalidField,
+			Message: fmt.Sprintf("Requested bot count (%d) exceeds available instances (%d)",
+				def.RequestedBotCount, len(def.AvailableInstances)),
+			Context: "RequestedBotCount",
+		})
+	}
+
+	// Validate instance IDs are not negative
+	for i, instanceID := range def.AvailableInstances {
+		if instanceID < 0 {
+			result.Valid = false
+			result.Errors = append(result.Errors, ValidationError{
+				Type:    ValidationErrorInvalidField,
+				Message: fmt.Sprintf("Instance ID must be non-negative (got %d)", instanceID),
+				Context: fmt.Sprintf("AvailableInstances[%d]", i),
+			})
+		}
+	}
+
+	// Check for duplicate instance IDs
+	instanceSet := make(map[int]bool)
+	for i, instanceID := range def.AvailableInstances {
+		if instanceSet[instanceID] {
+			result.Valid = false
+			result.Errors = append(result.Errors, ValidationError{
+				Type:    ValidationErrorInvalidField,
+				Message: fmt.Sprintf("Duplicate instance ID %d", instanceID),
+				Context: fmt.Sprintf("AvailableInstances[%d]", i),
+			})
+		}
+		instanceSet[instanceID] = true
+	}
+
+	return result
+}
+
+// ValidateLaunchOptions validates launch options
+func ValidateLaunchOptions(options *LaunchOptions) *ValidationResult {
+	result := &ValidationResult{
+		Valid:  true,
+		Errors: make([]ValidationError, 0),
+	}
+
+	// Validate emulator timeout
+	if options.EmulatorTimeout <= 0 {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Type:    ValidationErrorInvalidField,
+			Message: "Emulator timeout must be positive",
+			Context: "EmulatorTimeout",
+		})
+	}
+
+	// Validate stagger delay (can be 0)
+	if options.StaggerDelay < 0 {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Type:    ValidationErrorInvalidField,
+			Message: "Stagger delay cannot be negative",
+			Context: "StaggerDelay",
+		})
+	}
+
+	// Validate restart policy
+	if options.RestartPolicy.Enabled {
+		if options.RestartPolicy.MaxRetries < -1 {
+			result.Valid = false
+			result.Errors = append(result.Errors, ValidationError{
+				Type:    ValidationErrorInvalidField,
+				Message: "Max retries must be >= -1 (-1 for infinite)",
+				Context: "RestartPolicy.MaxRetries",
+			})
+		}
+
+		if options.RestartPolicy.InitialDelay <= 0 {
+			result.Valid = false
+			result.Errors = append(result.Errors, ValidationError{
+				Type:    ValidationErrorInvalidField,
+				Message: "Initial delay must be positive",
+				Context: "RestartPolicy.InitialDelay",
+			})
+		}
+
+		if options.RestartPolicy.MaxDelay <= 0 {
+			result.Valid = false
+			result.Errors = append(result.Errors, ValidationError{
+				Type:    ValidationErrorInvalidField,
+				Message: "Max delay must be positive",
+				Context: "RestartPolicy.MaxDelay",
+			})
+		}
+
+		if options.RestartPolicy.InitialDelay > options.RestartPolicy.MaxDelay {
+			result.Valid = false
+			result.Errors = append(result.Errors, ValidationError{
+				Type:    ValidationErrorInvalidField,
+				Message: "Initial delay cannot exceed max delay",
+				Context: "RestartPolicy",
+			})
+		}
+
+		if options.RestartPolicy.BackoffFactor <= 0 {
+			result.Valid = false
+			result.Errors = append(result.Errors, ValidationError{
+				Type:    ValidationErrorInvalidField,
+				Message: "Backoff factor must be positive",
+				Context: "RestartPolicy.BackoffFactor",
+			})
+		}
+	}
+
+	return result
 }

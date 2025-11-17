@@ -1137,27 +1137,40 @@ func (t *OrchestrationTabV3) handleStartGroup() {
 				return
 			}
 
-			result, err := t.orchestrator.LaunchGroup(name, t.currentGroup.LaunchOptions)
-			if err != nil {
-				dialog.ShowError(fmt.Errorf("failed to start group: %w", err), t.window)
-				return
-			}
+			// Launch asynchronously to prevent GUI freeze
+			go func() {
+				// Refresh instance state before launching to ensure accuracy
+				if err := t.orchestrator.GetEmulatorManager().DiscoverInstances(); err != nil {
+					fmt.Printf("Warning: Failed to discover instances before launch: %v\n", err)
+					// Continue anyway - instances might still be launchable
+				}
 
-			// Update runtime group reference
-			t.currentRunGroup, _ = t.orchestrator.GetGroup(name)
+				result, err := t.orchestrator.LaunchGroup(name, t.currentGroup.LaunchOptions)
+				if err != nil {
+					fyne.Do(func() {
+						dialog.ShowError(fmt.Errorf("failed to start group: %w", err), t.window)
+					})
+					return
+				}
 
-			// Update status
-			t.updateStatusData()
-			t.updateButtonStates()
+				// Update runtime group reference
+				t.currentRunGroup, _ = t.orchestrator.GetGroup(name)
 
-			message := fmt.Sprintf(
-				"Group started!\n\nLaunched: %d/%d bots\nConflicts: %d\nErrors: %d",
-				result.LaunchedBots,
-				result.RequestedBots,
-				len(result.Conflicts),
-				len(result.Errors),
-			)
-			dialog.ShowInformation("Group Started", message, t.window)
+				// Update status on GUI thread
+				fyne.Do(func() {
+					t.updateStatusData()
+					t.updateButtonStates()
+
+					message := fmt.Sprintf(
+						"Group started!\n\nLaunched: %d/%d bots\nConflicts: %d\nErrors: %d",
+						result.LaunchedBots,
+						result.RequestedBots,
+						len(result.Conflicts),
+						len(result.Errors),
+					)
+					dialog.ShowInformation("Group Started", message, t.window)
+				})
+			}()
 		},
 		t.window,
 	)

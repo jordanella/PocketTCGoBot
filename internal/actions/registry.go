@@ -54,4 +54,7 @@ var actionRegistry = map[string]reflect.Type{
 	// Sentry control actions
 	"sentryhalt":   reflect.TypeOf(SentryHalt{}),
 	"sentryresume": reflect.TypeOf(SentryResume{}),
+	// App management actions
+	"launchapp": reflect.TypeOf(LaunchApp{}),
+	"killapp":   reflect.TypeOf(KillApp{}),
 }

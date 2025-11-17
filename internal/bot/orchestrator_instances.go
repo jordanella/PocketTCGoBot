@@ -207,8 +207,9 @@ func (o *Orchestrator) waitForEmulatorReady(instanceID int, timeout time.Duratio
 	fmt.Printf("[WaitForReady] Waiting for instance %d to be ready (timeout: %v)\n", instanceID, timeout)
 
 	// Start tracking this instance in the health monitor
+	// NOTE: We do NOT untrack here - the instance will remain tracked throughout bot lifetime
+	// Untracking happens when bot routine completes (see runBotRoutine cleanup)
 	o.healthMonitor.TrackInstance(instanceID)
-	defer o.healthMonitor.UntrackInstance(instanceID)
 
 	// Check if already ready (avoid unnecessary wait)
 	if o.healthMonitor.IsInstanceReady(instanceID) {
@@ -219,14 +220,9 @@ func (o *Orchestrator) waitForEmulatorReady(instanceID int, timeout time.Duratio
 	// Wait for instance to become ready via health monitor
 	// The health monitor polls every 1 second and checks:
 	// - Window detection (via DiscoverInstances)
-	// - ADB connection (via Shell command test)
+	// - ADB connection (automatically attempts connection when window is detected)
 	if err := o.healthMonitor.WaitForInstanceReady(instanceID, timeout); err != nil {
 		return err
-	}
-
-	// Connect ADB now that instance is ready
-	if err := o.emulatorManager.ConnectInstance(instanceID); err != nil {
-		return fmt.Errorf("instance %d ready but ADB connection failed: %w", instanceID, err)
 	}
 
 	fmt.Printf("[WaitForReady] Instance %d: Ready! (window detected and ADB connected)\n", instanceID)

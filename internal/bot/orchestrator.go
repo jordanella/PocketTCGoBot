@@ -12,6 +12,7 @@ import (
 	"jordanella.com/pocket-tcg-go/internal/actions"
 	"jordanella.com/pocket-tcg-go/internal/database"
 	"jordanella.com/pocket-tcg-go/internal/emulator"
+	"jordanella.com/pocket-tcg-go/internal/events"
 	"jordanella.com/pocket-tcg-go/pkg/templates"
 )
 
@@ -33,6 +34,9 @@ type Orchestrator struct {
 
 	// Health monitoring for instance launching
 	healthMonitor *OrchestratorHealthMonitor
+
+	// Event bus for pub/sub notifications
+	eventBus events.EventBus
 
 	// Group management
 	groupDefinitions map[string]*BotGroupDefinition // Saved configurations
@@ -165,9 +169,18 @@ func NewOrchestrator(
 		groupConfigDir = config.FolderPath + "/groups"
 	}
 
+	// Create event bus with 1000 event buffer
+	eventBus := events.NewEventBus(1000)
+
 	// Create and start health monitor
 	healthMonitor := NewOrchestratorHealthMonitor(emulatorManager)
+	healthMonitor.SetEventBus(eventBus)
 	healthMonitor.Start()
+
+	// Set event bus on pool manager
+	if poolManager != nil {
+		poolManager.SetEventBus(eventBus)
+	}
 
 	return &Orchestrator{
 		config:           config,
@@ -177,6 +190,7 @@ func NewOrchestrator(
 		healthMonitor:    healthMonitor,
 		poolManager:      poolManager,
 		db:               db,
+		eventBus:         eventBus,
 		groupDefinitions: make(map[string]*BotGroupDefinition),
 		activeGroups:     make(map[string]*BotGroup),
 		instanceRegistry: make(map[int]*InstanceAssignment),
@@ -188,6 +202,11 @@ func NewOrchestrator(
 // SetStaggerDelay sets the delay between bot launches
 func (o *Orchestrator) SetStaggerDelay(delay time.Duration) {
 	o.staggerDelay = delay
+}
+
+// GetEventBus returns the orchestrator's event bus for subscription
+func (o *Orchestrator) GetEventBus() events.EventBus {
+	return o.eventBus
 }
 
 // CreateGroup creates a new bot group
@@ -207,22 +226,20 @@ func (o *Orchestrator) CreateGroup(
 		return nil, fmt.Errorf("group '%s' already exists", name)
 	}
 
-	// Validate parameters
-	if name == "" {
-		return nil, fmt.Errorf("group name is required")
+	// Create temporary definition for validation
+	tempDef := &BotGroupDefinition{
+		Name:               name,
+		RoutineName:        routineName,
+		AvailableInstances: availableInstances,
+		RequestedBotCount:  requestedBotCount,
+		RoutineConfig:      routineConfig,
+		AccountPoolName:    accountPoolName,
 	}
-	if routineName == "" {
-		return nil, fmt.Errorf("routine name is required")
-	}
-	if requestedBotCount <= 0 {
-		return nil, fmt.Errorf("requested bot count must be positive")
-	}
-	if len(availableInstances) == 0 {
-		return nil, fmt.Errorf("at least one emulator instance must be specified")
-	}
-	if requestedBotCount > len(availableInstances) {
-		return nil, fmt.Errorf("requested bot count (%d) exceeds available instances (%d)",
-			requestedBotCount, len(availableInstances))
+
+	// Validate group definition
+	validationResult := ValidateGroupDefinition(tempDef)
+	if !validationResult.Valid {
+		return nil, fmt.Errorf("group definition validation failed:\n%s", validationResult.FormatValidationErrors())
 	}
 
 	// Generate unique orchestration ID for this bot group execution
@@ -618,6 +635,12 @@ func (g *BotGroup) createBot(instanceID int) (*Bot, error) {
 	bot.routineRegistry = g.orchestrator.routineRegistry
 	bot.SetOrchestrationID(g.OrchestrationID)
 
+	// Inject manager adapter so bot can access account pool
+	if g.AccountPool != nil {
+		managerAdapter := NewBotGroupManagerAdapter(g)
+		bot.SetManager(managerAdapter)
+	}
+
 	// Initialize the bot
 	if err := bot.InitializeWithSharedRegistries(); err != nil {
 		return nil, fmt.Errorf("failed to initialize bot %d: %w", instanceID, err)
@@ -799,6 +822,45 @@ func (g *BotGroup) executeWithRestart(instanceID int, routineName string, policy
 					} else {
 						bot.Variables().Set("execution_id", fmt.Sprintf("%d", executionID))
 						fmt.Printf("Bot %d: Restarting routine from beginning (new execution ID: %d)\n", instanceID, executionID)
+					}
+				}
+			}
+
+			// Check if accounts are available before continuing
+			// This prevents infinite loops when account pool is exhausted
+			// The routine itself will call InjectNextAccount when it needs an account
+			if g.AccountPool != nil {
+				stats := g.AccountPool.GetStats()
+				if stats.Available == 0 {
+					fmt.Printf("Bot %d: No accounts available in pool. Waiting for accounts to become available...\n", instanceID)
+
+					// Wait for accounts to become available (with timeout)
+					accountAvailable := false
+					maxWait := 5 * time.Minute
+					checkInterval := 10 * time.Second
+					elapsed := time.Duration(0)
+
+					for elapsed < maxWait {
+						time.Sleep(checkInterval)
+						elapsed += checkInterval
+
+						stats = g.AccountPool.GetStats()
+						if stats.Available > 0 {
+							accountAvailable = true
+							fmt.Printf("Bot %d: Accounts now available (%d accounts). Continuing...\n", instanceID, stats.Available)
+							break
+						}
+
+						// Check if bot should stop
+						if bot.routineController.IsStopped() {
+							fmt.Printf("Bot %d: Stopped while waiting for accounts\n", instanceID)
+							return nil
+						}
+					}
+
+					if !accountAvailable {
+						fmt.Printf("Bot %d: Timeout waiting for accounts after %v. Stopping bot.\n", instanceID, maxWait)
+						return fmt.Errorf("no accounts available after waiting %v", maxWait)
 					}
 				}
 			}

@@ -840,15 +840,22 @@ func (t *AccountPoolsTabV2) handleDeletePool() {
 // handleRefreshPool refreshes pool account count
 func (t *AccountPoolsTabV2) handleRefreshPool() {
 	if t.selectedPoolName == "" {
+		fmt.Println("[AccountPoolsTab] handleRefreshPool: No pool selected")
 		return
 	}
 
+	fmt.Printf("[AccountPoolsTab] Refreshing pool '%s'...\n", t.selectedPoolName)
+
 	testResult, err := t.poolManager.TestPool(t.selectedPoolName)
 	if err != nil {
+		fmt.Printf("[AccountPoolsTab] TestPool error: %v\n", err)
 		t.totalAccountsValue.SetText("Error")
 		t.lastUpdatedLabel.SetText(fmt.Sprintf("(error: %v)", err))
 		return
 	}
+
+	fmt.Printf("[AccountPoolsTab] TestPool result: %d accounts found, %d sample accounts\n",
+		testResult.AccountsFound, len(testResult.SampleAccounts))
 
 	t.totalAccountsValue.SetText(fmt.Sprintf("%d", testResult.AccountsFound))
 	t.lastUpdatedLabel.SetText("(just now)")
@@ -865,10 +872,14 @@ func (t *AccountPoolsTabV2) handleRefreshPool() {
 		}
 		t.accountsData = append(t.accountsData, row)
 	}
+	fmt.Printf("[AccountPoolsTab] Populated %d rows in accounts table\n", len(t.accountsData))
 	t.accountsDataMu.Unlock()
 
 	if t.accountsTable != nil {
 		fyne.Do(func() { t.accountsTable.Refresh() })
+		fmt.Println("[AccountPoolsTab] Accounts table refreshed")
+	} else {
+		fmt.Println("[AccountPoolsTab] WARNING: accountsTable is nil!")
 	}
 }
 

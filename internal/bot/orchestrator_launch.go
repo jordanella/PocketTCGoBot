@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"jordanella.com/pocket-tcg-go/internal/database"
+	"jordanella.com/pocket-tcg-go/internal/events"
 )
 
 // LaunchResult contains the results of a group launch
@@ -20,6 +21,12 @@ type LaunchResult struct {
 
 // LaunchGroup starts all bots in a group with full orchestration
 func (o *Orchestrator) LaunchGroup(groupName string, options LaunchOptions) (*LaunchResult, error) {
+	// Validate launch options
+	validationResult := ValidateLaunchOptions(&options)
+	if !validationResult.Valid {
+		return nil, fmt.Errorf("launch options validation failed:\n%s", validationResult.FormatValidationErrors())
+	}
+
 	// Get group
 	group, exists := o.GetGroup(groupName)
 	if !exists {
@@ -96,6 +103,16 @@ func (o *Orchestrator) LaunchGroup(groupName string, options LaunchOptions) (*La
 	group.running = true
 	group.runningMu.Unlock()
 
+	// Publish group launched event
+	if o.eventBus != nil {
+		o.eventBus.PublishAsync(events.NewGroupLaunchedEvent(
+			groupName,
+			launchedCount,
+			group.RequestedBotCount,
+			acquiredInstances,
+		))
+	}
+
 	return result, nil
 }
 
@@ -116,6 +133,9 @@ func (o *Orchestrator) acquireInstances(group *BotGroup, options LaunchOptions) 
 		LaunchErrors:      make([]string, 0),
 	}
 
+	fmt.Printf("[AcquireInstances] Group '%s': Requested=%d, Available instances=%v\n",
+		group.Name, group.RequestedBotCount, group.AvailableInstances)
+
 	// Discover running instances before checking availability
 	if err := o.emulatorManager.DiscoverInstances(); err != nil {
 		result.LaunchErrors = append(result.LaunchErrors,
@@ -123,12 +143,28 @@ func (o *Orchestrator) acquireInstances(group *BotGroup, options LaunchOptions) 
 		// Continue anyway - instances might still be launchable
 	}
 
-	// Check all available instances
+	// Phase 1: Determine which instances to use (check availability and conflicts)
+	type instancePlan struct {
+		instanceID int
+		isRunning  bool
+	}
+	instancesPlanned := make([]instancePlan, 0, group.RequestedBotCount)
+
+	// Refresh instance discovery before planning to get current state
+	if err := o.emulatorManager.DiscoverInstances(); err != nil {
+		fmt.Printf("[AcquireInstances] Warning: Failed to refresh instance discovery: %v\n", err)
+	}
+
 	for _, instanceID := range group.AvailableInstances {
-		// Stop if we have enough
-		if len(result.AcquiredInstances) >= group.RequestedBotCount {
+		// Stop if we have enough planned
+		if len(instancesPlanned) >= group.RequestedBotCount {
+			fmt.Printf("[AcquireInstances] Planned enough instances (%d/%d)\n",
+				len(instancesPlanned), group.RequestedBotCount)
 			break
 		}
+
+		fmt.Printf("[AcquireInstances] Evaluating instance %d (planned=%d, needed=%d)\n",
+			instanceID, len(instancesPlanned), group.RequestedBotCount)
 
 		// Check availability
 		available, conflictingGroup, err := o.checkInstanceAvailability(instanceID, group.Name)
@@ -182,27 +218,49 @@ func (o *Orchestrator) acquireInstances(group *BotGroup, options LaunchOptions) 
 			continue
 		}
 
-		var emulatorPID int
-		if !running {
-			// Launch emulator
-			pid, err := o.launchEmulator(instanceID)
-			if err != nil {
-				result.LaunchErrors = append(result.LaunchErrors,
-					fmt.Sprintf("failed to launch instance %d: %v", instanceID, err))
-				continue
-			}
-			emulatorPID = pid
+		// Add to plan
+		instancesPlanned = append(instancesPlanned, instancePlan{
+			instanceID: instanceID,
+			isRunning:  running,
+		})
+		fmt.Printf("[AcquireInstances] Added instance %d to plan (running=%v)\n", instanceID, running)
+	}
 
-			// Wait for emulator to be ready
-			if err := o.waitForEmulatorReady(instanceID, options.EmulatorTimeout); err != nil {
+	if len(instancesPlanned) == 0 {
+		result.LaunchErrors = append(result.LaunchErrors, "no instances available after conflict resolution")
+		return result.AcquiredInstances, result
+	}
+
+	// Phase 2: Launch all instances that need launching
+	for _, plan := range instancesPlanned {
+		if !plan.isRunning {
+			fmt.Printf("[AcquireInstances] Launching instance %d...\n", plan.instanceID)
+			if _, err := o.launchEmulator(plan.instanceID); err != nil {
 				result.LaunchErrors = append(result.LaunchErrors,
-					fmt.Sprintf("instance %d failed to become ready: %v", instanceID, err))
-				continue
+					fmt.Sprintf("failed to launch instance %d: %v", plan.instanceID, err))
+				// Don't continue - we'll try to wait for it anyway in case it partially launched
 			}
+		}
+	}
+
+	// Phase 3: Wait for all instances to be ready
+	for _, plan := range instancesPlanned {
+		instanceID := plan.instanceID
+		fmt.Printf("[AcquireInstances] Waiting for instance %d to be ready...\n", instanceID)
+
+		// Refresh discovery one more time to ensure health monitor has current state
+		if err := o.emulatorManager.DiscoverInstances(); err != nil {
+			fmt.Printf("[AcquireInstances] Warning: Failed to refresh before wait: %v\n", err)
+		}
+
+		if err := o.waitForEmulatorReady(instanceID, options.EmulatorTimeout); err != nil {
+			result.LaunchErrors = append(result.LaunchErrors,
+				fmt.Sprintf("instance %d failed to become ready: %v", instanceID, err))
+			continue
 		}
 
 		// Reserve instance
-		if err := o.reserveInstance(instanceID, group.Name, instanceID, emulatorPID); err != nil {
+		if err := o.reserveInstance(instanceID, group.Name, instanceID, 0); err != nil {
 			result.LaunchErrors = append(result.LaunchErrors,
 				fmt.Sprintf("failed to reserve instance %d: %v", instanceID, err))
 			continue
@@ -210,6 +268,8 @@ func (o *Orchestrator) acquireInstances(group *BotGroup, options LaunchOptions) 
 
 		// Successfully acquired
 		result.AcquiredInstances = append(result.AcquiredInstances, instanceID)
+		fmt.Printf("[AcquireInstances] Successfully acquired instance %d (total: %d/%d)\n",
+			instanceID, len(result.AcquiredInstances), group.RequestedBotCount)
 	}
 
 	return result.AcquiredInstances, result
@@ -267,33 +327,76 @@ func (o *Orchestrator) launchBotsStaggered(group *BotGroup, instances []int, opt
 
 // runBotRoutine executes a bot's routine with restart policy
 func (o *Orchestrator) runBotRoutine(group *BotGroup, botInfo *BotInfo, policy RestartPolicy) {
+	instanceID := botInfo.InstanceID
+
+	// Guarantee cleanup runs regardless of panic or early return
+	defer func() {
+		// Recover from panics to ensure cleanup always runs
+		if r := recover(); r != nil {
+			fmt.Printf("[RunBotRoutine] PANIC in bot routine for instance %d: %v\n", instanceID, r)
+			botInfo.Status = BotStatusFailed
+			botInfo.Error = fmt.Errorf("panic: %v", r)
+		}
+
+		// Stop tracking this instance in health monitor
+		o.healthMonitor.UntrackInstance(instanceID)
+		fmt.Printf("[RunBotRoutine] Stopped health monitoring for instance %d\n", instanceID)
+
+		// Remove from active bots
+		group.activeBotsMu.Lock()
+		delete(group.ActiveBots, instanceID)
+		group.activeBotsMu.Unlock()
+
+		// Release instance
+		o.releaseInstance(instanceID, group.Name)
+
+		// If all bots have finished, mark group as not running
+		if group.GetActiveBotCount() == 0 {
+			group.runningMu.Lock()
+			group.running = false
+			group.runningMu.Unlock()
+		}
+	}()
+
+	// Register health callback to stop bot if instance becomes unhealthy
+	o.healthMonitor.OnHealthChange(instanceID, func(id int, isReady, wasReady bool) {
+		if wasReady && !isReady {
+			// Instance went from healthy → unhealthy
+			fmt.Printf("[BotGroup '%s'] Instance %d became unhealthy - stopping bot\n", group.Name, id)
+
+			// Cancel the routine context to stop the bot gracefully
+			botInfo.Status = BotStatusStopping
+			botInfo.routineCancel()
+		}
+	})
+
 	// Update status
 	botInfo.Status = BotStatusRunning
 
-	// Execute with restart policy
-	err := group.executeWithRestart(botInfo.InstanceID, group.RoutineName, policy)
+	// Publish bot started event
+	if o.eventBus != nil {
+		o.eventBus.PublishAsync(events.NewBotStartedEvent(group.Name, instanceID))
+	}
 
-	// Update status based on result
+	// Execute with restart policy
+	err := group.executeWithRestart(instanceID, group.RoutineName, policy)
+
+	// Update status based on result and publish appropriate event
 	if err != nil {
 		botInfo.Status = BotStatusFailed
 		botInfo.Error = err
+
+		// Publish bot failed event
+		if o.eventBus != nil {
+			o.eventBus.PublishAsync(events.NewBotFailedEvent(group.Name, instanceID, err))
+		}
 	} else {
 		botInfo.Status = BotStatusCompleted
-	}
 
-	// Remove from active bots
-	group.activeBotsMu.Lock()
-	delete(group.ActiveBots, botInfo.InstanceID)
-	group.activeBotsMu.Unlock()
-
-	// Release instance
-	o.releaseInstance(botInfo.InstanceID, group.Name)
-
-	// If all bots have finished, mark group as not running
-	if group.GetActiveBotCount() == 0 {
-		group.runningMu.Lock()
-		group.running = false
-		group.runningMu.Unlock()
+		// Publish bot completed event
+		if o.eventBus != nil {
+			o.eventBus.PublishAsync(events.NewBotCompletedEvent(group.Name, instanceID))
+		}
 	}
 }
 
@@ -342,6 +445,11 @@ func (o *Orchestrator) StopGroup(groupName string) error {
 	group.running = false
 	group.runningMu.Unlock()
 
+	// Publish group stopped event
+	if o.eventBus != nil {
+		o.eventBus.PublishAsync(events.NewGroupStoppedEvent(groupName))
+	}
+
 	return nil
 }
 
@@ -373,6 +481,11 @@ func (o *Orchestrator) stopBotOnInstance(groupName string, instanceID int) error
 	group.activeBotsMu.Lock()
 	delete(group.ActiveBots, instanceID)
 	group.activeBotsMu.Unlock()
+
+	// Publish bot stopped event
+	if o.eventBus != nil {
+		o.eventBus.PublishAsync(events.NewBotStoppedEvent(groupName, instanceID))
+	}
 
 	return nil
 }

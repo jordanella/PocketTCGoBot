@@ -84,7 +84,7 @@ type Bot struct {
 	recoveryConfig    RecoveryConfig       // Recovery behavior configuration
 	recoveryAttempts  map[string]int       // Track recovery attempts per issue type
 	onUnhealthyAction func()               // Callback when unhealthy event occurs
-	manager           *Manager             // Reference to parent manager (optional)
+	manager           interface{}          // Reference to parent manager or manager adapter (optional)
 	currentAccount    *accountpool.Account // Currently assigned account (nil if none)
 	ctx               context.Context
 	cancel            context.CancelFunc
@@ -479,6 +479,12 @@ func (b *Bot) SetUnhealthyAction(action func()) {
 // Returns interface{} to avoid circular dependency with actions package
 func (b *Bot) Manager() interface{} {
 	return b.manager
+}
+
+// SetManager sets the bot's manager
+// Accepts interface{} to support both *Manager and manager-like adapters
+func (b *Bot) SetManager(manager interface{}) {
+	b.manager = manager
 }
 
 // GetCurrentAccount returns the currently assigned account (nil if none)

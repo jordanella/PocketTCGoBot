@@ -4,7 +4,7 @@ queries:
     - name: All Available Accounts
       filters:
         - column: shinedust
-          comparator: =
+          comparator: '!='
           value: "12"
       sort:
         - column: pokegold
