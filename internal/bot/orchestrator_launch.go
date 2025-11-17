@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"jordanella.com/pocket-tcg-go/internal/database"
 	"jordanella.com/pocket-tcg-go/internal/events"
 )
@@ -19,14 +20,97 @@ type LaunchResult struct {
 	SkippedInstances []int
 }
 
-// LaunchGroup starts all bots in a group with full orchestration
-func (o *Orchestrator) LaunchGroup(groupName string, options LaunchOptions) (*LaunchResult, error) {
-	// Validate launch options
-	validationResult := ValidateLaunchOptions(&options)
-	if !validationResult.Valid {
-		return nil, fmt.Errorf("launch options validation failed:\n%s", validationResult.FormatValidationErrors())
+// LaunchOverrides allows runtime modification of group parameters without changing stored definition
+type LaunchOverrides struct {
+	// Core parameter overrides (nil = use definition value)
+	RequestedBotCount  *int              // Override number of bots to launch
+	AvailableInstances []int             // Override which instances to use
+	RoutineConfig      map[string]string // Merge with or override routine config
+	AccountPoolName    *string           // Override account pool
+
+	// Account limiting
+	MaxAccounts *int // Limit number of accounts to use from pool (e.g., only use 50 accounts)
+
+	// Launch options override
+	LaunchOptions *LaunchOptions // Override launch options
+	RestartPolicy *RestartPolicy // Override restart policy
+}
+
+// LaunchGroupWithOverrides starts all bots in a group with runtime parameter overrides
+// This allows launching with different settings without modifying the stored definition
+func (o *Orchestrator) LaunchGroupWithOverrides(groupName string, overrides *LaunchOverrides) (*LaunchResult, error) {
+	// Get the stored definition
+	definition, err := o.LoadGroupDefinition(groupName)
+	if err != nil {
+		return nil, fmt.Errorf("group definition '%s' not found: %w", groupName, err)
 	}
 
+	// Create a modified definition for this launch
+	runtimeDef := definition.Clone()
+
+	// Apply overrides to create runtime configuration
+	if overrides != nil {
+		if overrides.RequestedBotCount != nil {
+			runtimeDef.RequestedBotCount = *overrides.RequestedBotCount
+		}
+		if len(overrides.AvailableInstances) > 0 {
+			runtimeDef.AvailableInstances = overrides.AvailableInstances
+		}
+		if overrides.AccountPoolName != nil {
+			runtimeDef.AccountPoolName = *overrides.AccountPoolName
+		}
+		if len(overrides.RoutineConfig) > 0 {
+			// Merge with existing config
+			if runtimeDef.RoutineConfig == nil {
+				runtimeDef.RoutineConfig = make(map[string]string)
+			}
+			for k, v := range overrides.RoutineConfig {
+				runtimeDef.RoutineConfig[k] = v
+			}
+		}
+		if overrides.LaunchOptions != nil {
+			runtimeDef.LaunchOptions = *overrides.LaunchOptions
+		}
+		if overrides.RestartPolicy != nil {
+			runtimeDef.RestartPolicy = *overrides.RestartPolicy
+		}
+	}
+
+	// Validate the runtime definition
+	validationResult := ValidateGroupDefinition(runtimeDef)
+	if !validationResult.Valid {
+		return nil, fmt.Errorf("runtime configuration validation failed:\n%s", validationResult.FormatValidationErrors())
+	}
+
+	// Create a temporary runtime group (don't save to definitions)
+	// Use a unique runtime name to avoid conflicts
+	runtimeName := groupName + "_runtime_" + fmt.Sprintf("%d", time.Now().Unix())
+
+	// Create runtime group from modified definition
+	runtimeGroup, err := o.createTempRuntimeGroup(runtimeName, runtimeDef)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create runtime group: %w", err)
+	}
+
+	// If MaxAccounts is specified, create a limited pool view
+	if overrides != nil && overrides.MaxAccounts != nil && *overrides.MaxAccounts > 0 {
+		// TODO: Implement account pool limiting wrapper
+		// For now, just note it in the result
+		fmt.Printf("Note: MaxAccounts override (%d) requested but not yet implemented\n", *overrides.MaxAccounts)
+	}
+
+	// Launch the runtime group
+	result, err := o.launchGroupInternal(runtimeGroup, runtimeDef.LaunchOptions)
+
+	// Store original group name in metadata for display purposes
+	// (The runtime group will have the modified name internally)
+
+	return result, err
+}
+
+// LaunchGroup starts all bots in a group with full orchestration
+// Uses the stored group definition without modifications
+func (o *Orchestrator) LaunchGroup(groupName string, options LaunchOptions) (*LaunchResult, error) {
 	// Get group
 	group, exists := o.GetGroup(groupName)
 	if !exists {
@@ -36,6 +120,18 @@ func (o *Orchestrator) LaunchGroup(groupName string, options LaunchOptions) (*La
 	// Check if already running
 	if group.IsRunning() {
 		return nil, fmt.Errorf("group '%s' is already running", groupName)
+	}
+
+	// Launch with stored configuration
+	return o.launchGroupInternal(group, options)
+}
+
+// launchGroupInternal is the shared launch implementation used by both LaunchGroup and LaunchGroupWithOverrides
+func (o *Orchestrator) launchGroupInternal(group *BotGroup, options LaunchOptions) (*LaunchResult, error) {
+	// Validate launch options
+	validationResult := ValidateLaunchOptions(&options)
+	if !validationResult.Valid {
+		return nil, fmt.Errorf("launch options validation failed:\n%s", validationResult.FormatValidationErrors())
 	}
 
 	result := &LaunchResult{
@@ -55,7 +151,6 @@ func (o *Orchestrator) LaunchGroup(groupName string, options LaunchOptions) (*La
 			return result, fmt.Errorf("failed to resolve account pool '%s': %w", group.AccountPoolName, err)
 		}
 		group.AccountPool = pool
-		// Account pool is already set on group, no need for manager
 	}
 
 	// Phase 1: Routine Validation
@@ -94,7 +189,7 @@ func (o *Orchestrator) LaunchGroup(groupName string, options LaunchOptions) (*La
 	if launchedCount == 0 {
 		result.Success = false
 		// Release all acquired instances since no bots launched
-		o.releaseAllInstances(groupName)
+		o.releaseAllInstances(group.Name)
 		return result, fmt.Errorf("failed to launch any bots")
 	}
 
@@ -106,7 +201,7 @@ func (o *Orchestrator) LaunchGroup(groupName string, options LaunchOptions) (*La
 	// Publish group launched event
 	if o.eventBus != nil {
 		o.eventBus.PublishAsync(events.NewGroupLaunchedEvent(
-			groupName,
+			group.Name,
 			launchedCount,
 			group.RequestedBotCount,
 			acquiredInstances,
@@ -488,4 +583,42 @@ func (o *Orchestrator) stopBotOnInstance(groupName string, instanceID int) error
 	}
 
 	return nil
+}
+
+// createTempRuntimeGroup creates a temporary runtime group from a definition
+// This group is not stored in groupDefinitions and is meant for single-use execution
+func (o *Orchestrator) createTempRuntimeGroup(runtimeName string, def *BotGroupDefinition) (*BotGroup, error) {
+	o.groupsMu.Lock()
+	defer o.groupsMu.Unlock()
+
+	// Check if runtime name conflicts
+	if _, exists := o.activeGroups[runtimeName]; exists {
+		return nil, fmt.Errorf("runtime group '%s' already exists", runtimeName)
+	}
+
+	// Generate unique orchestration ID
+	orchestrationID := uuid.New().String()
+
+	// Create group
+	ctx, cancel := context.WithCancel(context.Background())
+	group := &BotGroup{
+		Name:               runtimeName,
+		OrchestrationID:    orchestrationID,
+		orchestrator:       o,
+		bots:               make(map[int]*Bot),
+		RoutineName:        def.RoutineName,
+		RoutineConfig:      def.RoutineConfig,
+		AvailableInstances: def.AvailableInstances,
+		RequestedBotCount:  def.RequestedBotCount,
+		ActiveBots:         make(map[int]*BotInfo),
+		AccountPoolName:    def.AccountPoolName,
+		running:            false,
+		ctx:                ctx,
+		cancelFunc:         cancel,
+	}
+
+	fmt.Printf("Created temporary runtime group '%s' with orchestration ID: %s\n", runtimeName, orchestrationID)
+
+	o.activeGroups[runtimeName] = group
+	return group, nil
 }
