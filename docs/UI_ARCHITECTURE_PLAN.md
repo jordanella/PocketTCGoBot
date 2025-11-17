@@ -23,6 +23,7 @@ This document outlines a complete redesign of the bot's user interface using Fyn
   - Initializing emulator manager
   - Event bus initialization
   - Health monitoring startup
+  - Checking for new card sets (future: fetch from API if available)
 
 **Design Notes**:
 - Non-blocking UI - show partial interface if some components fail
@@ -44,11 +45,11 @@ Main application uses a tabbed interface with the following top-level tabs:
 5. **Routines**
 6. **Accounts**
 7. **Card Collection**
-8. **Settings**
+8. **History & Analytics**
+9. **Settings**
 
 Optional tabs (context-dependent):
 - **Logs Viewer** (toggleable via settings)
-- **Event Stream** (developer mode)
 
 ---
 
@@ -134,7 +135,7 @@ Optional tabs (context-dependent):
 - Group name & routine name
 - Status badge (Running/Stopping/Paused)
 - Control buttons: Stop Group, Restart Group, View Logs
-- Account pool stats: Available/In-Use/Completed/Failed
+- Account pool stats: Available/In-Use accounts
 
 **Bot Instances Grid**:
 - Cards for each bot instance showing:
@@ -147,13 +148,38 @@ Optional tabs (context-dependent):
   - Health status indicators (window/ADB)
   - Mini screenshot/screen preview (optional)
   - Individual controls: Stop Bot, Restart Bot, View Details
+  - **Instance-Specific Event Feed**: Shows recent events for this specific bot/instance
 
-**Real-Time Event Stream** (Bottom Panel, Collapsible):
-- Scrolling feed of events from EventBus
-- Filterable by: Bot instance, Event type, Severity
+**System Event Stream** (Bottom Panel, Collapsible):
+- Scrolling feed of system-level events from EventBus
+- Shows orchestrator, health monitor, pool refresh events
+- Instance/bot-specific events are shown on respective cards
+- Filterable by: Event type, Severity
 - Color-coded by event type
 - Auto-scroll toggle
-- Export/save logs
+- Toggleable via developer tools setting
+
+#### Emulator Instances Panel (Right Sidebar, Collapsible)
+
+**Running Instances (In Groups)**:
+- Shows instances currently assigned to bot groups
+- Grouped by bot group
+- Each shows: Instance ID, Group name, Health status
+
+**Idle Instances (Available)**:
+- Running emulator windows not part of any group
+- Each shows: Instance ID, Window title, Health status (window/ADB), "Assign to Group" button
+
+**Configured But Not Running**:
+- Instances in MuMu configuration but not currently launched
+- Each shows: Instance ID, "Launch Instance" button
+- Health status: Offline
+
+**Actions**:
+- Refresh/Discover Instances button
+- Launch Selected Instance
+- Connect/Disconnect ADB
+- View Instance Details
 
 #### No Active Groups View
 - Empty state illustration
@@ -201,7 +227,7 @@ Optional tabs (context-dependent):
   - Edit
   - Duplicate
   - Delete (with confirmation)
-  - Export to YAML
+  - Show in Folder
 
 **Edit Mode** (Form View):
 - **Basic Info Section**:
@@ -220,8 +246,8 @@ Optional tabs (context-dependent):
   - Instance allocation preview (shows which instances will be used)
 
 - **Account Pool Section**:
-  - Pool selector (dropdown)
-  - Pool stats preview (available accounts)
+  - Pool selector (multi-select - can aggregate from multiple pools)
+  - Pool stats preview (available accounts across selected pools)
   - Account limiting options (future)
 
 - **Launch Options Section** (Collapsible):
@@ -246,10 +272,10 @@ Optional tabs (context-dependent):
 
 #### Toolbar Actions
 - Create New Group button
-- Import from YAML
-- Export Selected
+- Import Groups (drag-and-drop YAML files or browse)
 - Delete Selected (batch)
 - Refresh from Disk
+- Open Groups Folder
 
 ---
 
@@ -264,7 +290,6 @@ Optional tabs (context-dependent):
 - Each shows:
   - Pool name
   - Total accounts (from last refresh)
-  - Type indicator (Query-based, File-based, Hybrid)
   - Last refresh timestamp
 - Active pools indicator (in use by running groups)
 
@@ -278,9 +303,7 @@ Optional tabs (context-dependent):
     - Total accounts: X
     - Available: Y
     - In Use: Z (by which groups)
-    - Completed: W
-    - Failed: V
-  - Refresh button (manual pool refresh)
+  - Refresh button (manual pool refresh - also auto-refreshes on group launch and pool exhaustion)
   - Test Pool button (validates queries)
 
 - **Configuration Display**:
@@ -297,7 +320,7 @@ Optional tabs (context-dependent):
   - Edit
   - Duplicate
   - Delete
-  - Export to YAML
+  - Show in Folder
   - View Full Account List
 
 **Edit Mode**:
@@ -332,19 +355,22 @@ Optional tabs (context-dependent):
 
 #### Toolbar Actions
 - Create New Pool
-- Import from YAML
+- Import Pools (drag-and-drop YAML files or browse)
 - Refresh All Pools
 - Delete Selected
+- Open Pools Folder
 
 ---
 
 ## Tab 5: Routines
 
-**Purpose**: Browse, test, and manage routine definitions
+**Purpose**: Browse, test, and manage routine definitions and template images
 
-### Layout
+### Sub-Tabs
 
-#### Routines List (Left Panel)
+#### Sub-Tab: Routines (Default)
+
+##### Routines List (Left Panel)
 - Tree view organized by directory structure
 - Each routine shows:
   - Name (from metadata)
@@ -368,7 +394,7 @@ Optional tabs (context-dependent):
   - Edit in External Editor
   - Delete
   - Duplicate
-  - Export/Share
+  - Show in Folder
 
 **Metadata Section**:
 - Description
@@ -425,12 +451,53 @@ Optional tabs (context-dependent):
 - "Start Test" button
 - Real-time execution view with step-by-step progress
 
-#### Toolbar Actions
+##### Toolbar Actions
 - Create New Routine (opens template/wizard)
 - Refresh from Disk
-- Import Routine
+- Import Routines (drag-and-drop YAML files or browse)
 - Validate All
 - Open Routines Folder
+
+#### Sub-Tab: Templates
+
+**Purpose**: Manage template images used for image detection in routines
+
+##### Template Library (Grid View)
+- Grid of template images organized by category/routine
+- Each template card shows:
+  - Template image thumbnail
+  - Template name
+  - File name
+  - Resolution
+  - Used by (which routines reference this template)
+  - Last modified date
+- Search/filter by name, category, routine
+- Sort by name, date, usage count
+
+##### Selected Template Detail
+- Large image preview
+- Template metadata:
+  - Name, file path, resolution
+  - Default matching threshold (if configured)
+  - Referenced by (list of routines)
+- Actions:
+  - Test Template (match against screenshot)
+  - Edit Metadata
+  - Replace Image
+  - Delete
+  - Show in Folder
+- Template matching test panel:
+  - Upload/select screenshot
+  - Adjust threshold slider
+  - See matching results with confidence score
+  - Highlight matching region
+
+##### Toolbar Actions
+- Import Templates (drag-and-drop images or browse)
+- Organize by Category
+- Bulk Rename
+- Open Templates Folder
+- Refresh from Disk
 
 ---
 
@@ -443,7 +510,7 @@ Optional tabs (context-dependent):
 #### Filters & Search Panel (Top)
 - Search by device account ID
 - Filter by:
-  - Status (Available/In-Use/Completed/Failed)
+  - Status (Available/In-Use)
   - Pack count range (slider)
   - Account fields (custom filters)
   - Pool membership (multi-select pools)
@@ -481,12 +548,11 @@ Optional tabs (context-dependent):
 - Card collection preview (link to card collection filtered by this account)
 
 #### Bulk Actions Toolbar
-- Import Accounts (from folder)
+- Import Accounts (from folder - drag-and-drop or browse)
 - Export Selected (to folder with XML files)
 - Delete Selected (with confirmation)
 - Update Field (bulk update custom fields)
-- Mark as Failed/Available (bulk status change)
-- Assign to Pool (temporary assignment)
+- Open XML Storage Folder
 
 #### Account Detail Dialog (Double-click row)
 - All metadata in editable form
@@ -498,11 +564,11 @@ Optional tabs (context-dependent):
 
 #### Statistics Panel (Right Sidebar)
 - Total accounts: X
-- By status breakdown (pie chart)
+- By status breakdown (Available/In-Use pie chart)
 - Average pack count
 - Top accounts by packs/gold
 - Recently added accounts
-- Accounts needing attention (failed, stale)
+- Recently used accounts
 
 ---
 
@@ -615,7 +681,136 @@ Optional tabs (context-dependent):
 
 ---
 
-## Tab 8: Settings
+## Tab 8: History & Analytics
+
+**Purpose**: Historical view and analytics of all routine executions and system performance
+
+### Layout
+
+#### Time Range Selector (Top Bar)
+- Preset ranges: Last 24 Hours, Last 7 Days, Last 30 Days, Last 90 Days, All Time, Custom Range
+- Date range picker for custom selection
+- Auto-refresh toggle (update charts in real-time)
+
+#### Summary Cards (Top Section)
+- **Total Executions**: Count for selected time range
+- **Success Rate**: Percentage with trend indicator
+- **Total Runtime**: Aggregate runtime with average per execution
+- **Accounts Processed**: Unique accounts used
+- **Total Iterations**: Sum of all iterations across executions
+
+#### Analytics Tabs
+
+##### Tab: Execution Timeline
+- **Chart**: Line/area chart showing executions over time
+  - X-axis: Time (hour/day/week based on range)
+  - Y-axis: Number of executions
+  - Color-coded by success/failure
+  - Hover for details
+- **Filters**: Group name, Routine name, Status
+- **Export**: Download chart as image or data as CSV
+
+##### Tab: Performance Metrics
+- **Charts**:
+  - Average runtime trend (line chart)
+  - Success rate trend (line chart)
+  - Execution distribution by hour of day (bar chart)
+  - Execution distribution by day of week (bar chart)
+- **Top Performers**:
+  - Fastest routines (avg runtime)
+  - Most reliable routines (success rate)
+  - Most used routines (execution count)
+- **Bottlenecks**:
+  - Slowest routines
+  - Highest failure rates
+  - Most common failure points
+
+##### Tab: Routine Breakdown
+- **Table**: List of all routines with aggregated statistics
+  - Routine name
+  - Total executions
+  - Success rate
+  - Avg runtime, Min runtime, Max runtime
+  - Last executed
+  - Click to filter execution history
+- **Charts per Routine**:
+  - Success/failure distribution
+  - Runtime distribution (histogram)
+  - Execution trend over time
+
+##### Tab: Account Performance
+- **Table**: Accounts with execution statistics
+  - Device account ID
+  - Times used
+  - Success rate when used
+  - Avg packs opened (if tracked)
+  - Total runtime
+  - Last used date
+- **Charts**:
+  - Most used accounts (bar chart)
+  - Account success rates (comparison)
+
+##### Tab: Group Analysis
+- **Table**: Bot groups with historical data
+  - Group name
+  - Total launches
+  - Avg bots per launch
+  - Total runtime
+  - Success rate
+  - Accounts consumed
+- **Charts**:
+  - Group usage over time
+  - Bot count distribution
+  - Group performance comparison
+
+#### Execution History Table (Bottom Section)
+- Detailed table of all routine executions
+- **Columns** (sortable, filterable):
+  - Execution ID
+  - Date/Time
+  - Routine Name
+  - Bot Group
+  - Account (device account ID)
+  - Bot Instance ID
+  - Duration
+  - Status (Success/Failed/Stopped)
+  - Error Message (if failed)
+  - Iterations Completed
+  - Packs Opened (if tracked)
+- **Filters**:
+  - Date range
+  - Routine name
+  - Group name
+  - Account
+  - Status
+  - Instance ID
+- **Actions**:
+  - View details (opens detailed execution view)
+  - View logs (if available)
+  - Re-run with same config
+- **Pagination**: 50-100 per page
+- **Export**: Export filtered results to CSV/JSON
+
+#### Detailed Execution View (Modal/Dialog)
+- Full execution details:
+  - All metadata (execution ID, timestamps, duration, etc.)
+  - Configuration used (routine config variables)
+  - Account details
+  - Step-by-step log (if available)
+  - Error stack trace (if failed)
+  - Metrics collected during execution
+  - Screenshots captured (if any)
+- Actions: Re-run, Export, Close
+
+### Toolbar Actions
+- Refresh Data
+- Export Current View (CSV/JSON)
+- Clear History (with retention period selector)
+- Open Logs Folder
+
+---
+
+## Tab 9: Settings
 
 **Purpose**: Application configuration and preferences
 
@@ -1098,37 +1293,444 @@ Optional tabs (context-dependent):
 
 ---
 
-## Open Questions & Decisions
+## Design Decisions (Finalized)
 
-1. **Emulators Tab**: Dedicated tab vs Settings subsection vs Live Monitor panel?
-   - **Recommendation**: Settings subsection for now, promote to tab if complex
+1. **Emulator Instances Panel**: ✅ Part of Live Monitor (right sidebar with idle/running/offline sections)
 
-2. **Templates Management**: Separate tab vs Routines sub-tab vs Settings?
-   - **Recommendation**: Routines sub-tab (Templates), keeps related features together
+2. **Templates Management**: ✅ Sub-tab within Routines tab (keeps related features together)
 
-3. **Execution History**: Separate tab vs accessible via context menus?
-   - **Recommendation**: Separate "Analytics" tab for historical/statistical views
+3. **Execution History & Analytics**: ✅ Dedicated Tab 8 with comprehensive analytics and charts
 
-4. **Developer Tools**: Always visible vs toggle in Settings?
-   - **Recommendation**: Toggle in Settings → General → "Show developer tools"
+4. **Developer Tools**: ✅ Toggle in Settings → General → "Show developer tools"
 
-5. **Event Stream**: Dedicated tab vs Live Monitor panel vs modal window?
-   - **Recommendation**: Optional tab (enabled via developer tools), collapsible panel in Live Monitor
+5. **Event Stream**: ✅ Part of Live Monitor:
+   - System events in bottom panel (collapsible, requires developer tools enabled)
+   - Instance/bot-specific events on respective bot cards
 
-6. **Multi-Window Support**: Single window vs multiple windows (e.g., pop-out Live Monitor)?
-   - **Recommendation**: Single window for MVP, consider multi-window in Phase 4
+6. **Multi-Window Support**: Future feature - anchored mini monitors/controllers to instance windows
 
-7. **Drag-and-Drop**: Enable for reordering, file imports, etc.?
-   - **Recommendation**: Yes, for pinned groups, instance selection, file imports
+7. **Drag-and-Drop**: ✅ Enabled for:
+   - Reordering pinned groups
+   - Importing YAML files (routines, pools, groups)
+   - Importing accounts/templates
 
-8. **Themes**: Just Light/Dark or full theme customization?
-   - **Recommendation**: Light/Dark/System for Phase 1, custom themes in Phase 4
+8. **Themes**: ✅ Light/Dark/System with optional color profile customization (low priority)
 
-9. **Card Images**: Store locally, fetch from API, or both?
-   - **Recommendation**: Store locally with optional API sync (future)
+9. **Card Images**: ✅ Store locally, fetch new sets from API during splash screen (future enhancement)
 
-10. **Account Pool Refresh**: Manual only or auto-refresh with interval?
-    - **Recommendation**: Both, configurable in Settings
+10. **Account Pool Refresh**: ✅ Multiple triggers:
+    - Manual refresh in Account Pools tab
+    - Auto-refresh on group launch
+    - Auto-refresh when running group exhausts pool
+
+11. **Account Statuses**: ✅ Only Available/In-Use (Completed/Failed are routine-execution specific, not account-level)
+
+12. **Account Pool Type**: ✅ No type indicator needed - all pools use unified hybrid approach (queries + includes/excludes + watched paths)
+
+13. **Export Functions**: ✅ "Show in Folder" instead of "Export to YAML" (files always stored as YAML on disk)
+
+14. **Pool Selection**: ✅ Multi-select to aggregate from multiple pools
+
+---
+
+## Dependency Injection & Data Binding Architecture
+
+### Overview
+
+The GUI needs access to the backend systems for executing operations and receiving real-time updates. This section describes how dependencies are injected and how data flows between the backend and UI.
+
+### Dependency Injection Strategy
+
+#### GUI Application Context
+
+Create a central `AppContext` struct that holds references to all backend components:
+
+```go
+type AppContext struct {
+    // Core components
+    Orchestrator     *bot.Orchestrator
+    Database         *sql.DB
+    PoolManager      *accountpool.PoolManager
+    EmulatorManager  *emulator.Manager
+    TemplateRegistry *templates.TemplateRegistry
+    RoutineRegistry  *actions.RoutineRegistry
+    EventBus         events.EventBus
+
+    // Configuration
+    Config *bot.Config
+
+    // UI state (if needed)
+    Settings *GUISettings
+}
+```
+
+#### Initialization Flow
+
+1. **Main Function** initializes all backend components (same as current implementation)
+2. **Creates AppContext** with references to all initialized components
+3. **Passes AppContext** to GUI initialization
+4. **GUI stores AppContext** and uses it for all backend operations
+
+```go
+func main() {
+    // Initialize backend
+    db := initializeDatabase()
+    poolManager := accountpool.NewPoolManager(...)
+    orchestrator := bot.NewOrchestrator(...)
+    // ... initialize all components
+
+    // Create application context
+    appCtx := &AppContext{
+        Orchestrator:     orchestrator,
+        Database:         db,
+        PoolManager:      poolManager,
+        EmulatorManager:  orchestrator.GetEmulatorManager(),
+        TemplateRegistry: orchestrator.GetTemplateRegistry(),
+        RoutineRegistry:  orchestrator.GetRoutineRegistry(),
+        EventBus:         orchestrator.GetEventBus(),
+        Config:           config,
+        Settings:         loadGUISettings(),
+    }
+
+    // Launch GUI with context
+    RunGUI(appCtx)
+}
+```
+
+### Data Binding Strategies
+
+The UI uses a **hybrid approach** combining Fyne data binding, direct event bus subscriptions, and manual updates:
+
+#### 1. Fyne Data Binding (For Simple State)
+
+Use Fyne's built-in `binding` package for simple, UI-only state:
+
+**Use Cases**:
+- Form inputs (routine config variables, pool filters)
+- UI settings (theme, font size, checkboxes)
+- Simple toggles and selections
+
+**Example**:
+```go
+// In a form
+botCountBinding := binding.NewInt()
+botCountBinding.Set(groupDef.RequestedBotCount)
+
+// Widget
+botCountSlider := widget.NewSliderWithData(1, 10, botCountBinding)
+
+// Get value when saving
+botCount, _ := botCountBinding.Get()
+```
+
+**Limitations**: Fyne bindings are UI-only and don't connect to backend state directly.
+
+#### 2. Event Bus Subscriptions (For Real-Time Updates)
+
+Use the Event Bus for real-time updates from backend to UI:
+
+**Use Cases**:
+- Bot status changes
+- Group launched/stopped events
+- Account pool refresh events
+- Health monitor updates
+- Execution progress updates
+
+**Pattern**:
+```go
+// In tab initialization
+func (t *LiveMonitorTab) Initialize(appCtx *AppContext) {
+    // Subscribe to relevant events
+    appCtx.EventBus.Subscribe(events.EventTypeBotStarted, t.onBotStarted)
+    appCtx.EventBus.Subscribe(events.EventTypeBotStopped, t.onBotStopped)
+    appCtx.EventBus.Subscribe(events.EventTypeBotFailed, t.onBotFailed)
+    appCtx.EventBus.Subscribe(events.EventTypeGroupLaunched, t.onGroupLaunched)
+    appCtx.EventBus.Subscribe(events.EventTypeGroupStopped, t.onGroupStopped)
+    // ... more subscriptions
+}
+
+// Event handler updates UI
+func (t *LiveMonitorTab) onBotStarted(event events.Event) {
+    // Extract event data
+    groupName := event.Data["group_name"].(string)
+    instanceID := event.Data["instance_id"].(int)
+
+    // Update UI (must be on UI thread)
+    t.updateBotCard(groupName, instanceID, BotStatusRunning)
+    t.window.Canvas().Refresh(t.botCardsContainer)
+}
+```
+
+**Important**: Fyne requires UI updates to happen on the main/UI thread. Use `fyne.CurrentApp().Driver().DoEventually()` or similar for thread-safe updates from event handlers.
+
+**Thread-Safe UI Updates**:
+```go
+func (t *LiveMonitorTab) onBotStarted(event events.Event) {
+    // Capture data outside of goroutine
+    groupName := event.Data["group_name"].(string)
+    instanceID := event.Data["instance_id"].(int)
+
+    // Schedule UI update on main thread
+    t.app.Driver().DoEventually(func() {
+        t.updateBotCard(groupName, instanceID, BotStatusRunning)
+    })
+}
+```
+
+#### 3. Polling (For Non-Event-Driven Data)
+
+For data that doesn't emit events, use periodic polling with timers:
+
+**Use Cases**:
+- Account pool statistics (if not evented)
+- Emulator health status (if not using health change callbacks)
+- Database statistics
+
+**Pattern**:
+```go
+func (t *QuickLaunchTab) startPolling(appCtx *AppContext) {
+    ticker := time.NewTicker(5 * time.Second)
+    go func() {
+        for range ticker.C {
+            // Fetch data
+            stats := appCtx.PoolManager.GetPoolStats("main_pool")
+
+            // Update UI on main thread
+            t.app.Driver().DoEventually(func() {
+                t.updatePoolStats(stats)
+            })
+        }
+    }()
+}
+```
+
+**Note**: Prefer event bus over polling when possible for better performance and responsiveness.
+
+#### 4. Direct Backend Calls (For User Actions)
+
+UI components call backend methods directly for user-initiated actions:
+
+**Use Cases**:
+- Launching a bot group
+- Creating/editing definitions
+- Importing accounts
+- Validating routines
+
+**Pattern**:
+```go
+func (t *BotGroupsTab) onLaunchButtonClicked(groupName string, overrides *bot.LaunchOverrides) {
+    // Show loading indicator
+    t.showLoadingOverlay()
+
+    // Call backend in goroutine (don't block UI)
+    go func() {
+        result, err := t.appCtx.Orchestrator.LaunchGroupWithOverrides(groupName, overrides)
+
+        // Update UI on main thread
+        t.app.Driver().DoEventually(func() {
+            t.hideLoadingOverlay()
+
+            if err != nil {
+                t.showError(fmt.Sprintf("Failed to launch group: %v", err))
+                return
+            }
+
+            // Show success
+            t.showSuccess(fmt.Sprintf("Launched %d bots successfully", result.LaunchedBots))
+
+            // Navigate to Live Monitor
+            t.navigateToTab("Live Monitor")
+        })
+    }()
+}
+```
+
+### Event Bus Integration Details
+
+#### Subscription Management
+
+**Tab-Level Subscriptions**:
+- Each tab subscribes to relevant events in its `Initialize()` method
+- Unsubscribe when tab is destroyed/hidden (if needed)
+- Use filters to only process relevant events
+
+**Example Tab Structure**:
+```go
+type LiveMonitorTab struct {
+    appCtx            *AppContext
+    app               fyne.App
+    window            fyne.Window
+    subscriptions     []events.Subscription
+    botCards          map[int]*BotCard
+    groupList         *widget.List
+    // ... more fields
+}
+
+func (t *LiveMonitorTab) Initialize(appCtx *AppContext) {
+    t.appCtx = appCtx
+
+    // Subscribe to events
+    sub1 := appCtx.EventBus.Subscribe(events.EventTypeBotStarted, t.onBotStarted)
+    sub2 := appCtx.EventBus.Subscribe(events.EventTypeGroupLaunched, t.onGroupLaunched)
+    // ... more subscriptions
+
+    // Store subscriptions for cleanup
+    t.subscriptions = []events.Subscription{sub1, sub2}
+}
+
+func (t *LiveMonitorTab) Cleanup() {
+    // Unsubscribe from all events
+    for _, sub := range t.subscriptions {
+        t.appCtx.EventBus.Unsubscribe(sub)
+    }
+}
+```
+
+#### Event Filtering
+
+Filter events at the handler level to avoid unnecessary UI updates:
+
+```go
+func (t *LiveMonitorTab) onBotStarted(event events.Event) {
+    // Only process if this is the selected group
+    groupName := event.Data["group_name"].(string)
+    if groupName != t.selectedGroupName {
+        return // Ignore events for non-selected groups
+    }
+
+    // Process event...
+}
+```
+
+### Data Refresh Patterns
+
+#### On-Demand Refresh
+
+User clicks refresh button → Direct backend call → Update UI:
+
+```go
+func (t *AccountPoolsTab) onRefreshClicked() {
+    poolName := t.selectedPool
+
+    go func() {
+        // Refresh pool in backend
+        err := t.appCtx.PoolManager.RefreshPool(poolName)
+
+        t.app.Driver().DoEventually(func() {
+            if err != nil {
+                t.showError(fmt.Sprintf("Refresh failed: %v", err))
+                return
+            }
+
+            // Reload pool data
+            pool, _ := t.appCtx.PoolManager.GetPool(poolName)
+            stats := pool.GetStats()
+            t.updatePoolStats(stats)
+        })
+    }()
+}
+```
+
+#### Auto-Refresh on Events
+
+Pool refreshes automatically (e.g., on group launch) → Event published → UI updates:
+
+```go
+// Backend publishes event after refresh
+eventBus.PublishAsync(events.NewPoolRefreshedEvent(poolName, stats))
+
+// UI subscribes and updates
+func (t *AccountPoolsTab) onPoolRefreshed(event events.Event) {
+    poolName := event.Data["pool_name"].(string)
+    stats := event.Data["stats"].(accountpool.PoolStats)
+
+    t.app.Driver().DoEventually(func() {
+        t.updatePoolStats(poolName, stats)
+    })
+}
+```
+
+### Complex UI State Management
+
+For complex state (like bot instance cards with multiple fields updating), consider a **ViewModel pattern**:
+
+```go
+type BotInstanceViewModel struct {
+    InstanceID       int
+    Status           bot.BotStatus
+    CurrentAccount   string
+    CurrentStep      string
+    Runtime          time.Duration
+    Iterations       int
+    HealthWindow     bool
+    HealthADB        bool
+    RecentEvents     []events.Event
+
+    // UI widgets
+    statusLabel      *widget.Label
+    accountLabel     *widget.Label
+    stepLabel        *widget.Label
+    // ... more widgets
+}
+
+func (vm *BotInstanceViewModel) UpdateStatus(status bot.BotStatus) {
+    vm.Status = status
+    vm.statusLabel.SetText(string(status))
+    vm.statusLabel.Refresh()
+}
+
+func (vm *BotInstanceViewModel) UpdateCurrentStep(step string) {
+    vm.CurrentStep = step
+    vm.stepLabel.SetText(step)
+    vm.stepLabel.Refresh()
+}
+```
+
+Then event handlers simply call ViewModel update methods:
+
+```go
+func (t *LiveMonitorTab) onBotStarted(event events.Event) {
+    instanceID := event.Data["instance_id"].(int)
+
+    t.app.Driver().DoEventually(func() {
+        if vm, exists := t.botViewModels[instanceID]; exists {
+            vm.UpdateStatus(bot.BotStatusRunning)
+        }
+    })
+}
+```
+
+### Summary: Data Flow Patterns
+
+1. **Backend → UI (Real-Time)**:
+   - Event Bus subscription
+   - Event handler extracts data
+   - Updates UI on main thread
+
+2. **UI → Backend (User Actions)**:
+   - User interaction triggers handler
+   - Handler calls AppContext backend method (in goroutine)
+   - Result updates UI on main thread
+
+3. **UI ↔ UI (Form State)**:
+   - Fyne data bindings for simple forms
+   - No backend involvement
+
+4. **Periodic Updates**:
+   - Timer-based polling (when events not available)
+   - Fetch data from backend
+   - Update UI on main thread
+
+### Best Practices
+
+1. **Always update UI on main thread** using `Driver().DoEventually()`
+2. **Avoid blocking UI thread** - use goroutines for backend calls
+3. **Unsubscribe from events** when tabs/components are destroyed
+4. **Filter events** early to avoid unnecessary processing
+5. **Use ViewModels** for complex component state
+6. **Batch updates** when possible to reduce refresh calls
+7. **Show loading indicators** for long-running operations
+8. **Handle errors gracefully** with user-friendly messages
 
 ---
 
